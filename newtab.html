@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Open Brain — Today</title>
+<link rel="stylesheet" href="newtab.css">
+</head>
+<body>
+  <!-- Settings overlay -->
+  <div id="settings-overlay" class="settings-overlay hidden">
+    <div class="settings-card">
+      <h2>Настройки</h2>
+      <label>
+        Format Focus URL
+        <input type="text" id="settings-endpoint" placeholder="https://xxx.supabase.co/functions/v1/format-focus">
+      </label>
+      <label>
+        MCP Endpoint
+        <input type="text" id="settings-mcp" placeholder="https://xxx.supabase.co/functions/v1/open-brain-mcp">
+      </label>
+      <label>
+        API Key
+        <input type="password" id="settings-key" placeholder="your-mcp-key">
+      </label>
+      <div class="settings-actions">
+        <button id="settings-save">Сохранить</button>
+        <button id="settings-cancel" class="secondary">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <header>
+      <p class="date" id="date"></p>
+      <div class="header-actions">
+        <button class="gear-btn" id="gear-btn" title="Настройки">&#9881;</button>
+      </div>
+    </header>
+
+    <main>
+      <div id="loading" class="loading">Загружаю...</div>
+      <div id="error" class="error hidden"></div>
+      <div id="no-config" class="no-config hidden">
+        <p>Настрой подключение к Open Brain</p>
+        <button id="setup-btn">Настроить</button>
+      </div>
+
+      <!-- Focus view -->
+      <div id="focus" class="focus hidden">
+        <h1 id="greeting"></h1>
+        <p class="subtitle">Фокус на сегодня</p>
+
+        <div class="split-layout" id="split-layout">
+          <div class="split-left">
+            <ol id="tasks" class="task-list"></ol>
+            <p class="remaining hidden" id="remaining"></p>
+          </div>
+          <div class="split-right hidden" id="detail-panel">
+            <button class="detail-close" id="detail-close">&times;</button>
+            <div class="detail-title" id="detail-title"></div>
+            <div class="detail-tags" id="detail-tags"></div>
+            <div class="detail-divider"></div>
+            <div class="detail-content" id="detail-content"></div>
+            <div class="detail-actions">
+              <div class="detail-label">Апдейт</div>
+              <div class="task-update-row">
+                <input type="text" class="task-update-input" id="detail-input" placeholder="Что нового по задаче..." />
+                <button class="task-update-btn" id="detail-send">&#8593;</button>
+              </div>
+              <button class="task-done-btn" id="detail-done">&#10003; Выполнено</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick capture -->
+        <div class="capture-bar hidden" id="capture-bar">
+          <div class="capture-row">
+            <input type="text" class="capture-input" id="capture-input" placeholder="+ Новая задача..." />
+            <button class="capture-btn" id="capture-btn">&#8593;</button>
+          </div>
+        </div>
+
+        <button id="explore-btn" class="explore-btn hidden">Explore &#8595;</button>
+      </div>
+
+      <!-- Expanded all-tasks view -->
+      <div id="all-tasks" class="all-tasks hidden">
+        <button id="collapse-btn" class="collapse-btn">&larr; Фокус</button>
+
+        <div class="split-layout" id="split-layout-all">
+          <div class="split-left">
+            <div id="all-tasks-list"></div>
+          </div>
+          <div class="split-right hidden" id="detail-panel-all">
+            <button class="detail-close" id="detail-close-all">&times;</button>
+            <div class="detail-title" id="detail-title-all"></div>
+            <div class="detail-tags" id="detail-tags-all"></div>
+            <div class="detail-divider"></div>
+            <div class="detail-content" id="detail-content-all"></div>
+            <div class="detail-actions">
+              <div class="detail-label">Апдейт</div>
+              <div class="task-update-row">
+                <input type="text" class="task-update-input" id="detail-input-all" placeholder="Что нового по задаче..." />
+                <button class="task-update-btn" id="detail-send-all">&#8593;</button>
+              </div>
+              <button class="task-done-btn" id="detail-done-all">&#10003; Выполнено</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">Open Brain — Today</footer>
+  </div>
+
+  <script src="newtab.js"></script>
+</body>
+</html>

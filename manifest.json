@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Open Brain — Today",
+  "version": "2.0",
+  "description": "Daily focus from Open Brain",
+  "permissions": ["storage"],
+  "host_permissions": ["https://*.supabase.co/*"],
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
+  "options_page": "options.html",
+  "icons": {
+    "128": "icon128.png"
+  }
+}
