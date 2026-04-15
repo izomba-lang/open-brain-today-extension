@@ -375,8 +375,8 @@ async function submitDetailUpdate(viewId) {
       }
     }
 
-    // New task was created — refresh everything
-    const needsRefresh = action.mark_done || result.new_task_id;
+    // New task was created or deadline changed — refresh everything
+    const needsRefresh = action.mark_done || result.new_task_id || result.deadline_updated;
 
     if (needsRefresh) {
       // Refetch from format-focus to get fresh AI titles
@@ -396,6 +396,9 @@ async function submitDetailUpdate(viewId) {
         showNotification(`Новая задача: ${result.new_task_content}`);
       } else if (action.mark_done) {
         showNotification("Задача выполнена");
+      } else if (result.deadline_updated) {
+        const d = new Date(result.deadline_updated).toLocaleDateString("ru-RU");
+        showNotification(`Дедлайн сдвинут на ${d}`);
       }
     } else {
       els.input.value = "";
