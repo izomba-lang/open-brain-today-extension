@@ -114,7 +114,14 @@ async function mcpCall(toolName, args = {}) {
 
 async function markDone(id) {
   await clearCache();
-  return mcpCall("update_thought", { id, status: "done" });
+  // Also mark merged tasks as done
+  const task = allTasks.find((t) => t.id === id);
+  const mergedIds = task?.merged_ids || [];
+  const promises = [mcpCall("update_thought", { id, status: "done" })];
+  for (const mid of mergedIds) {
+    promises.push(mcpCall("update_thought", { id: mid, status: "done" }));
+  }
+  await Promise.all(promises);
 }
 
 async function processUpdate(taskId, updateText) {
