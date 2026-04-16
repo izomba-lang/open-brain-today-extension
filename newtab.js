@@ -32,14 +32,16 @@ async function saveConfig(endpoint, mcp, key) {
 
 // ── Cache ─────────────────────────────────────────────────────────────────
 
+// Returns { data, isFresh } or null if no cache at all
 async function getCachedTasks() {
   try {
     if (typeof chrome !== "undefined" && chrome.storage?.local) {
       return new Promise((resolve) => {
         chrome.storage.local.get(CACHE_KEY, (result) => {
           const cached = result[CACHE_KEY];
-          if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
-            resolve(cached.data);
+          if (cached && cached.data) {
+            const isFresh = Date.now() - cached.ts < CACHE_TTL_MS;
+            resolve({ data: cached.data, isFresh });
           } else {
             resolve(null);
           }
@@ -49,7 +51,10 @@ async function getCachedTasks() {
     const raw = localStorage.getItem(CACHE_KEY);
     if (raw) {
       const cached = JSON.parse(raw);
-      if (Date.now() - cached.ts < CACHE_TTL_MS) return cached.data;
+      if (cached && cached.data) {
+        const isFresh = Date.now() - cached.ts < CACHE_TTL_MS;
+        return { data: cached.data, isFresh };
+      }
     }
     return null;
   } catch {
@@ -751,25 +756,32 @@ async function init() {
   }
 
   try {
-    // Try cache first for instant display
+    // Always show cached data instantly (even if stale), then refresh in background
     const cached = await getCachedTasks();
     if (cached) {
-      allTasks = sortTasks(cached.tasks || []);
+      allTasks = sortTasks(cached.data.tasks || []);
       document.getElementById("loading").classList.add("hidden");
       document.getElementById("focus").classList.remove("hidden");
       document.getElementById("explore-btn").classList.remove("hidden");
       document.getElementById("capture-bar").classList.remove("hidden");
       renderFocusTasks();
 
-      // Refresh in background
-      fetchFocus().then((data) => {
-        allTasks = sortTasks(data.tasks || []);
-        setCachedTasks(data);
-        if (!activeTaskId) renderFocusTasks();
-      }).catch((err) => console.error("Background refresh failed:", err));
+      // Only refresh if stale
+      if (!cached.isFresh) {
+        fetchFocus().then((data) => {
+          allTasks = sortTasks(data.tasks || []);
+          setCachedTasks(data);
+          if (!activeTaskId) {
+            const view = getCurrentView();
+            if (view === "all") renderAllTasks();
+            else renderFocusTasks();
+          }
+        }).catch((err) => console.error("Background refresh failed:", err));
+      }
       return;
     }
 
+    // No cache at all — must wait for fetch
     const data = await fetchFocus();
     allTasks = sortTasks(data.tasks || []);
     await setCachedTasks(data);
