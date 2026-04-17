@@ -394,7 +394,7 @@ async function submitDetailUpdate(viewId) {
       // Refetch from format-focus to get fresh AI titles
       try {
         const data = await fetchFocus();
-        allTasks = sortTasks(data.tasks || []);
+        allTasks = data.tasks || [];
         await setCachedTasks(data);
       } catch {
         // If refresh fails, just use what we have
@@ -628,7 +628,7 @@ async function captureTask(text) {
     // Refresh tasks
     try {
       const data = await fetchFocus();
-      allTasks = sortTasks(data.tasks || []);
+      allTasks = data.tasks || [];
       await setCachedTasks(data);
       renderFocusTasks();
     } catch {
@@ -759,7 +759,7 @@ async function init() {
     // Always show cached data instantly (even if stale), then refresh in background
     const cached = await getCachedTasks();
     if (cached) {
-      allTasks = sortTasks(cached.data.tasks || []);
+      allTasks = cached.data.tasks || [];
       document.getElementById("loading").classList.add("hidden");
       document.getElementById("focus").classList.remove("hidden");
       document.getElementById("explore-btn").classList.remove("hidden");
@@ -769,7 +769,7 @@ async function init() {
       // Only refresh if stale
       if (!cached.isFresh) {
         fetchFocus().then((data) => {
-          allTasks = sortTasks(data.tasks || []);
+          allTasks = data.tasks || [];
           setCachedTasks(data);
           if (!activeTaskId) {
             const view = getCurrentView();
@@ -783,7 +783,7 @@ async function init() {
 
     // No cache at all — must wait for fetch
     const data = await fetchFocus();
-    allTasks = sortTasks(data.tasks || []);
+    allTasks = data.tasks || [];
     await setCachedTasks(data);
 
     document.getElementById("loading").classList.add("hidden");
