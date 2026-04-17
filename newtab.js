@@ -201,12 +201,14 @@ function renderBrief(data) {
   focusEl.textContent = b.focus || "";
 
   const adviceEl = document.getElementById("brief-advice");
-  if (b.advice && b.advice.length > 0) {
+  const hasAdvice = b.advice && b.advice.length > 0;
+  if (hasAdvice) {
     adviceEl.innerHTML = b.advice.map(a => `<div class="brief-advice-item">${escapeHtml(a)}</div>`).join("");
   }
 
   const warningsEl = document.getElementById("brief-warnings");
-  if (b.warnings && b.warnings.length > 0) {
+  const hasWarnings = b.warnings && b.warnings.length > 0;
+  if (hasWarnings) {
     warningsEl.innerHTML = b.warnings.map(w => `<div class="brief-warning-item">${escapeHtml(w)}</div>`).join("");
   }
 
@@ -216,7 +218,10 @@ function renderBrief(data) {
     insightEl.classList.remove("hidden");
   }
 
-  document.getElementById("brief").classList.remove("hidden");
+  // Only show the expandable section if there's advice/warnings/insight
+  if (hasAdvice || hasWarnings || b.insight) {
+    document.getElementById("brief").classList.remove("hidden");
+  }
 }
 
 async function loadBrief() {
@@ -810,19 +815,15 @@ document.addEventListener("keydown", (e) => {
 
 // Brief toggle
 document.getElementById("brief-toggle").addEventListener("click", () => {
-  const adviceEl = document.getElementById("brief-advice");
-  const warningsEl = document.getElementById("brief-warnings");
-  const insightEl = document.getElementById("brief-insight");
+  const detailsEl = document.getElementById("brief-details");
   const btn = document.getElementById("brief-toggle");
 
-  const isOpen = adviceEl.classList.contains("open");
+  const isOpen = detailsEl.classList.contains("open");
   if (isOpen) {
-    adviceEl.classList.remove("open");
-    warningsEl.classList.remove("open");
+    detailsEl.classList.remove("open");
     btn.textContent = "Подробнее";
   } else {
-    adviceEl.classList.add("open");
-    if (warningsEl.innerHTML) warningsEl.classList.add("open");
+    detailsEl.classList.add("open");
     btn.textContent = "Свернуть";
   }
 });

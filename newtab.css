@@ -143,50 +143,74 @@ main {
   font-size: 32px;
   font-weight: 600;
   color: #fff;
-  margin-bottom: 4px;
-}
-
-.subtitle {
-  font-size: 14px;
-  color: #444;
-  margin-bottom: 32px;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
+  margin-bottom: 0;
 }
 
 /* ── Advisor brief ─────────────────────── */
 
-.brief {
-  text-align: left;
-  max-width: 520px;
-  margin: 0 auto 36px;
-  padding: 20px 24px;
-  background: #111114;
-  border: 1px solid #1e1e24;
-  border-radius: 14px;
-}
-
 .brief-focus {
   font-size: 15px;
-  line-height: 1.6;
-  color: #ccc;
-  margin-bottom: 16px;
+  line-height: 1.7;
+  color: #666;
+  margin-top: 8px;
+  margin-bottom: 0;
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
-.brief-advice {
+.brief-focus:empty {
   display: none;
 }
 
-.brief-advice.open {
+.brief {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.brief-toggle {
+  background: none;
+  border: none;
+  color: #333;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  margin-top: 12px;
+  font-family: inherit;
+  transition: color 0.2s;
+  letter-spacing: 0.5px;
+}
+
+.brief-toggle:hover {
+  color: #666;
+}
+
+.brief-details {
+  display: none;
+  text-align: left;
+  max-width: 480px;
+  margin: 16px auto 0;
+  padding: 16px 20px;
+  background: #111114;
+  border: 1px solid #1a1a1e;
+  border-radius: 12px;
+}
+
+.brief-details.open {
+  display: block;
+  animation: fadeIn 0.3s ease;
+}
+
+.brief-advice {
   display: block;
 }
 
 .brief-advice-item {
   font-size: 13px;
   line-height: 1.6;
-  color: #999;
-  padding: 6px 0;
-  padding-left: 20px;
+  color: #888;
+  padding: 5px 0;
+  padding-left: 18px;
   position: relative;
 }
 
@@ -195,27 +219,27 @@ main {
   position: absolute;
   left: 0;
   top: 12px;
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: #3a5ba0;
 }
 
 .brief-warnings {
-  display: none;
+  display: block;
+  margin-top: 10px;
 }
 
-.brief-warnings.open {
-  display: block;
-  margin-top: 12px;
+.brief-warnings:empty {
+  display: none;
 }
 
 .brief-warning-item {
   font-size: 13px;
   line-height: 1.5;
   color: #c66;
-  padding: 6px 0;
-  padding-left: 20px;
+  padding: 5px 0;
+  padding-left: 18px;
   position: relative;
 }
 
@@ -223,7 +247,7 @@ main {
   content: "!";
   position: absolute;
   left: 2px;
-  top: 6px;
+  top: 5px;
   font-size: 11px;
   font-weight: 700;
   color: #c66;
@@ -233,27 +257,11 @@ main {
   font-size: 13px;
   line-height: 1.6;
   color: #7b6cb7;
-  margin-top: 12px;
+  margin-top: 10px;
   padding: 10px 14px;
   background: #141218;
   border-radius: 8px;
   font-style: italic;
-}
-
-.brief-toggle {
-  background: none;
-  border: none;
-  color: #3a5ba0;
-  font-size: 12px;
-  cursor: pointer;
-  padding: 0;
-  margin-top: 8px;
-  font-family: inherit;
-  transition: color 0.2s;
-}
-
-.brief-toggle:hover {
-  color: #5a7bc0;
 }
 
 /* ── Split layout ──────────────────────── */
@@ -263,6 +271,10 @@ main {
   gap: 0;
   width: 100%;
   transition: gap 0.35s ease;
+}
+
+.focus .split-layout {
+  margin-top: 40px;
 }
 
 .split-layout.has-detail {
