@@ -148,6 +148,102 @@ async function processUpdate(taskId, updateText) {
   return data;
 }
 
+// ── Daily Brief ─────────────────────────────────────────────────────────
+
+const BRIEF_CACHE_KEY = "open-brain-brief-cache";
+const BRIEF_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+async function fetchBrief() {
+  const config = await getConfig();
+  if (!config) return null;
+
+  const briefUrl = config.endpoint.replace("format-focus", "daily-brief");
+  const res = await fetch(`${briefUrl}?key=${config.key}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+async function getCachedBrief() {
+  try {
+    if (typeof chrome !== "undefined" && chrome.storage?.local) {
+      return new Promise((resolve) => {
+        chrome.storage.local.get(BRIEF_CACHE_KEY, (result) => {
+          const cached = result[BRIEF_CACHE_KEY];
+          if (cached && cached.data) {
+            const isFresh = Date.now() - cached.ts < BRIEF_CACHE_TTL_MS;
+            resolve({ data: cached.data, isFresh });
+          } else {
+            resolve(null);
+          }
+        });
+      });
+    }
+    return null;
+  } catch { return null; }
+}
+
+async function setCachedBrief(data) {
+  const entry = { data, ts: Date.now() };
+  if (typeof chrome !== "undefined" && chrome.storage?.local) {
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [BRIEF_CACHE_KEY]: entry }, resolve);
+    });
+  }
+}
+
+function renderBrief(data) {
+  if (!data || !data.brief) return;
+  const b = data.brief;
+
+  document.getElementById("greeting").textContent = b.greeting || getGreeting();
+
+  const focusEl = document.getElementById("brief-focus");
+  focusEl.textContent = b.focus || "";
+
+  const adviceEl = document.getElementById("brief-advice");
+  if (b.advice && b.advice.length > 0) {
+    adviceEl.innerHTML = b.advice.map(a => `<div class="brief-advice-item">${escapeHtml(a)}</div>`).join("");
+  }
+
+  const warningsEl = document.getElementById("brief-warnings");
+  if (b.warnings && b.warnings.length > 0) {
+    warningsEl.innerHTML = b.warnings.map(w => `<div class="brief-warning-item">${escapeHtml(w)}</div>`).join("");
+  }
+
+  const insightEl = document.getElementById("brief-insight");
+  if (b.insight) {
+    insightEl.textContent = b.insight;
+    insightEl.classList.remove("hidden");
+  }
+
+  document.getElementById("brief").classList.remove("hidden");
+}
+
+async function loadBrief() {
+  // Show cached brief instantly
+  const cached = await getCachedBrief();
+  if (cached) {
+    renderBrief(cached.data);
+    if (!cached.isFresh) {
+      // Refresh in background
+      fetchBrief().then((data) => {
+        if (data && data.brief) {
+          renderBrief(data);
+          setCachedBrief(data);
+        }
+      }).catch(() => {});
+    }
+    return;
+  }
+  // No cache — fetch in background (don't block page load)
+  fetchBrief().then((data) => {
+    if (data && data.brief) {
+      renderBrief(data);
+      setCachedBrief(data);
+    }
+  }).catch(() => {});
+}
+
 // ── Sorting ──────────────────────────────────────────────────────────────
 
 function sortTasks(tasks) {
@@ -712,6 +808,25 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// Brief toggle
+document.getElementById("brief-toggle").addEventListener("click", () => {
+  const adviceEl = document.getElementById("brief-advice");
+  const warningsEl = document.getElementById("brief-warnings");
+  const insightEl = document.getElementById("brief-insight");
+  const btn = document.getElementById("brief-toggle");
+
+  const isOpen = adviceEl.classList.contains("open");
+  if (isOpen) {
+    adviceEl.classList.remove("open");
+    warningsEl.classList.remove("open");
+    btn.textContent = "Подробнее";
+  } else {
+    adviceEl.classList.add("open");
+    if (warningsEl.innerHTML) warningsEl.classList.add("open");
+    btn.textContent = "Свернуть";
+  }
+});
+
 document.getElementById("explore-btn").addEventListener("click", showAllTasks);
 document.getElementById("collapse-btn").addEventListener("click", showFocus);
 document.getElementById("remaining").addEventListener("click", showAllTasks);
@@ -765,6 +880,7 @@ async function init() {
       document.getElementById("explore-btn").classList.remove("hidden");
       document.getElementById("capture-bar").classList.remove("hidden");
       renderFocusTasks();
+      loadBrief(); // Load advisor brief
 
       // Only refresh if stale
       if (!cached.isFresh) {
@@ -792,6 +908,7 @@ async function init() {
     document.getElementById("capture-bar").classList.remove("hidden");
 
     renderFocusTasks();
+    loadBrief(); // Load advisor brief
   } catch (err) {
     document.getElementById("loading").classList.add("hidden");
     const errorEl = document.getElementById("error");

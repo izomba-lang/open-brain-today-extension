@@ -149,9 +149,111 @@ main {
 .subtitle {
   font-size: 14px;
   color: #444;
-  margin-bottom: 48px;
+  margin-bottom: 32px;
   text-transform: uppercase;
   letter-spacing: 1.5px;
+}
+
+/* ── Advisor brief ─────────────────────── */
+
+.brief {
+  text-align: left;
+  max-width: 520px;
+  margin: 0 auto 36px;
+  padding: 20px 24px;
+  background: #111114;
+  border: 1px solid #1e1e24;
+  border-radius: 14px;
+}
+
+.brief-focus {
+  font-size: 15px;
+  line-height: 1.6;
+  color: #ccc;
+  margin-bottom: 16px;
+}
+
+.brief-advice {
+  display: none;
+}
+
+.brief-advice.open {
+  display: block;
+}
+
+.brief-advice-item {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #999;
+  padding: 6px 0;
+  padding-left: 20px;
+  position: relative;
+}
+
+.brief-advice-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3a5ba0;
+}
+
+.brief-warnings {
+  display: none;
+}
+
+.brief-warnings.open {
+  display: block;
+  margin-top: 12px;
+}
+
+.brief-warning-item {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #c66;
+  padding: 6px 0;
+  padding-left: 20px;
+  position: relative;
+}
+
+.brief-warning-item::before {
+  content: "!";
+  position: absolute;
+  left: 2px;
+  top: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #c66;
+}
+
+.brief-insight {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #7b6cb7;
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #141218;
+  border-radius: 8px;
+  font-style: italic;
+}
+
+.brief-toggle {
+  background: none;
+  border: none;
+  color: #3a5ba0;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  margin-top: 8px;
+  font-family: inherit;
+  transition: color 0.2s;
+}
+
+.brief-toggle:hover {
+  color: #5a7bc0;
 }
 
 /* ── Split layout ──────────────────────── */
