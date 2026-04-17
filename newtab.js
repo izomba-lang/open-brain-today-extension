@@ -475,11 +475,10 @@ async function submitDetailUpdate(viewId) {
     const result = await processUpdate(id, text);
     const action = result.action || {};
 
-    // Task was marked done
+    // Update local state immediately for responsiveness
     if (action.mark_done) {
       allTasks = allTasks.filter((t) => t.id !== id);
     } else {
-      // Content was updated — refresh local state
       const task = allTasks.find((t) => t.id === id);
       if (task && action.append_to_content) {
         const date = new Date().toLocaleDateString("ru-RU");
@@ -488,36 +487,34 @@ async function submitDetailUpdate(viewId) {
       }
     }
 
-    // New task was created or deadline changed — refresh everything
-    const needsRefresh = action.mark_done || result.new_task_id || result.deadline_updated;
+    // Show immediate feedback
+    els.input.value = "";
+    els.sendBtn.textContent = "\u2713";
 
-    if (needsRefresh) {
-      // Refetch from format-focus to get fresh AI titles
-      try {
-        const data = await fetchFocus();
-        allTasks = data.tasks || [];
-        await setCachedTasks(data);
-      } catch {
-        // If refresh fails, just use what we have
-      }
-      closeDetail(viewId);
-      if (viewId === "all") renderAllTasks();
-      else renderFocusTasks();
-
-      // Show notification
-      if (result.new_task_content) {
-        showNotification(`Новая задача: ${result.new_task_content}`);
-      } else if (action.mark_done) {
-        showNotification("Задача выполнена");
-      } else if (result.deadline_updated) {
-        const d = new Date(result.deadline_updated).toLocaleDateString("ru-RU");
-        showNotification(`Дедлайн сдвинут на ${d}`);
-      }
-    } else {
-      els.input.value = "";
-      els.sendBtn.textContent = "\u2713";
-      setTimeout(() => { els.sendBtn.textContent = "\u2191"; }, 1000);
+    // Show notification
+    if (result.new_task_content) {
+      showNotification(`Новая задача: ${result.new_task_content}`);
+    } else if (action.mark_done) {
+      showNotification("Задача выполнена");
+    } else if (result.deadline_updated) {
+      const d = new Date(result.deadline_updated).toLocaleDateString("ru-RU");
+      showNotification(`Дедлайн сдвинут на ${d}`);
+    } else if (action.append_to_content) {
+      showNotification("Статус обновлён");
     }
+
+    // Always refetch from format-focus to get fresh AI titles
+    // (process-update already busted the server cache)
+    try {
+      const data = await fetchFocus();
+      allTasks = data.tasks || [];
+      await setCachedTasks(data);
+    } catch {
+      // If refresh fails, keep local state
+    }
+    closeDetail(viewId);
+    if (viewId === "all") renderAllTasks();
+    else renderFocusTasks();
   } catch (err) {
     console.error("Update failed:", err);
     els.sendBtn.textContent = "!";
