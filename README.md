@@ -30,9 +30,8 @@
 
 - `GET {endpoint}?key=...` — format-focus, возвращает `{ tasks: [...] }`.
 - `GET {endpoint (replace format-focus → daily-brief)}?key=...` — бриф (опц.).
-- `POST {mcp}?key=...` — JSON-RPC `tools/call` с именами:
-  - `complete_thought` — пометить задачу выполненной.
-  - `process_update` — свободный апдейт по задаче (Claude сам решает, что делать).
+- `POST {mcp}?key=...` — JSON-RPC `tools/call` → `update_thought` (`{ id, status: "done" }`) для отметки задачи выполненной.
+- `POST {endpoint (replace format-focus → process-update)}?key=...` — свободный апдейт по задаче (Claude сам решает, что делать: close / shift deadline / append content / spawn follow-up). Body: `{ task_id, update_text }`.
 
 ## Кеш
 
