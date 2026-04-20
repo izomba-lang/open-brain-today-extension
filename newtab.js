@@ -168,55 +168,62 @@ const state = {
 function renderLeftBrief() {
   const greet = document.querySelector(".b-brief-greet");
   const date = document.querySelector(".b-brief-date");
-  if (greet) greet.textContent = getGreeting() + ", ты";
-  if (date) date.textContent = formatDateLong();
-
-  // Focus/Advice/Warnings sections in the left sidebar.
-  // The markup has .b-brief-section.focus + notes + warnings — keep them but fill with real data.
   const b = state.brief?.brief;
 
-  const focusSec = document.querySelector(".b-brief-section.focus");
-  if (focusSec) {
-    const content = focusSec.querySelector(".b-brief-body, p") || focusSec.querySelector("div:not(h4)");
-    const h4 = focusSec.querySelector("h4");
-    if (h4) h4.textContent = "Фокус дня";
-    // Replace everything after h4 with brief focus text
-    [...focusSec.children].forEach((c) => { if (c !== h4) c.remove(); });
-    const p = document.createElement("div");
-    p.className = "b-brief-body";
-    p.textContent = b?.focus || "Брифинг появится после подключения.";
-    focusSec.appendChild(p);
+  // Use Claude-generated greeting if available, else fallback
+  if (greet) greet.textContent = b?.greeting || getGreeting();
+  if (date) date.textContent = formatDateLong();
+
+  // Helper: clear section content except <h4>, set header, append body
+  const fillSection = (selector, headerText, bodyNode) => {
+    const sec = document.querySelector(selector);
+    if (!sec) return;
+    const h4 = sec.querySelector("h4");
+    if (h4) h4.textContent = headerText;
+    [...sec.children].forEach((c) => { if (c !== h4) c.remove(); });
+    sec.appendChild(bodyNode);
+  };
+
+  // Focus
+  const focusBody = document.createElement("div");
+  focusBody.className = "b-brief-body";
+  focusBody.textContent = b?.focus || "Брифинг появится после подключения.";
+  fillSection(".b-brief-section.focus", "Фокус", focusBody);
+
+  // Advice
+  const adviceBody = document.createElement("ul");
+  if (b?.advice?.length) {
+    adviceBody.innerHTML = b.advice.map((a) => `<li>${escapeHtml(a)}</li>`).join("");
+  } else {
+    adviceBody.innerHTML = '<li style="opacity:.5">Пока нечего советовать</li>';
+  }
+  fillSection(".b-brief-section.advice", "Советы", adviceBody);
+
+  // Risks / warnings (markup uses .risks, not .warn)
+  const risksBody = document.createElement("ul");
+  if (b?.warnings?.length) {
+    risksBody.innerHTML = b.warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join("");
+    fillSection(".b-brief-section.risks", "Риски", risksBody);
+    const risksSec = document.querySelector(".b-brief-section.risks");
+    if (risksSec) risksSec.style.display = "";
+  } else {
+    // Hide the risks section entirely when there's nothing to warn about
+    const risksSec = document.querySelector(".b-brief-section.risks");
+    if (risksSec) risksSec.style.display = "none";
   }
 
-  // Notes = advice (optional)
-  const adviceSec = document.querySelector(".b-brief-section:not(.focus):not(.warn)");
-  if (adviceSec) {
-    const h4 = adviceSec.querySelector("h4");
-    if (h4) h4.textContent = "Заметки";
-    [...adviceSec.children].forEach((c) => { if (c !== h4) c.remove(); });
-    const list = document.createElement("div");
-    list.className = "b-brief-body";
-    if (b?.advice?.length) {
-      list.innerHTML = b.advice.map((a) => `<div class="brief-line">— ${escapeHtml(a)}</div>`).join("");
+  // Insight
+  const insightSec = document.querySelector(".b-brief-section.insight");
+  if (insightSec) {
+    if (b?.insight) {
+      const p = document.createElement("p");
+      p.className = "lead";
+      p.textContent = b.insight;
+      fillSection(".b-brief-section.insight", "Инсайт", p);
+      insightSec.style.display = "";
     } else {
-      list.innerHTML = '<div class="brief-line" style="opacity:.5">Нет заметок</div>';
+      insightSec.style.display = "none";
     }
-    adviceSec.appendChild(list);
-  }
-
-  const warnSec = document.querySelector(".b-brief-section.warn");
-  if (warnSec) {
-    const h4 = warnSec.querySelector("h4");
-    if (h4) h4.textContent = "Внимание";
-    [...warnSec.children].forEach((c) => { if (c !== h4) c.remove(); });
-    const list = document.createElement("div");
-    list.className = "b-brief-body";
-    if (b?.warnings?.length) {
-      list.innerHTML = b.warnings.map((w) => `<div class="brief-line">— ${escapeHtml(w)}</div>`).join("");
-    } else {
-      list.innerHTML = '<div class="brief-line" style="opacity:.5">Всё под контролем</div>';
-    }
-    warnSec.appendChild(list);
   }
 }
 
