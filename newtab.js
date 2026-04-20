@@ -1,114 +1,75 @@
-// ── Config ──────────────────────────────────────────────────────────────────
+/* Open Brain — Cockpit newtab
+ * Backend: Supabase format-focus + MCP (preserved from v1)
+ * UI: Variant B (Tri-column Cockpit)
+ */
+
+// ── Config & Storage ────────────────────────────────────────────────────
 
 const STORAGE_KEY = "open-brain-today-config";
-const TOP_N = 3;
 const CACHE_KEY = "open-brain-today-cache";
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const BRIEF_CACHE_KEY = "open-brain-brief-cache";
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const BRIEF_CACHE_TTL_MS = 60 * 60 * 1000;
+const TOP_N = 3;
 
-async function getConfig() {
-  try {
-    if (typeof chrome !== "undefined" && chrome.storage?.local) {
-      return new Promise((resolve) => {
-        chrome.storage.local.get(STORAGE_KEY, (result) => {
-          resolve(result[STORAGE_KEY] || null);
-        });
-      });
-    }
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-  } catch {
-    return null;
-  }
-}
-
-async function saveConfig(endpoint, mcp, key) {
-  const config = { endpoint, mcp, key };
+async function storageGet(key) {
   if (typeof chrome !== "undefined" && chrome.storage?.local) {
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [STORAGE_KEY]: config }, resolve);
-    });
+    return new Promise((r) => chrome.storage.local.get(key, (res) => r(res[key])));
   }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+  try { return JSON.parse(localStorage.getItem(key) || "null"); } catch { return null; }
 }
-
-// ── Cache ─────────────────────────────────────────────────────────────────
-
-// Returns { data, isFresh } or null if no cache at all
-async function getCachedTasks() {
-  try {
-    if (typeof chrome !== "undefined" && chrome.storage?.local) {
-      return new Promise((resolve) => {
-        chrome.storage.local.get(CACHE_KEY, (result) => {
-          const cached = result[CACHE_KEY];
-          if (cached && cached.data) {
-            const isFresh = Date.now() - cached.ts < CACHE_TTL_MS;
-            resolve({ data: cached.data, isFresh });
-          } else {
-            resolve(null);
-          }
-        });
-      });
-    }
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (raw) {
-      const cached = JSON.parse(raw);
-      if (cached && cached.data) {
-        const isFresh = Date.now() - cached.ts < CACHE_TTL_MS;
-        return { data: cached.data, isFresh };
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function setCachedTasks(data) {
-  const entry = { data, ts: Date.now() };
+async function storageSet(key, val) {
   if (typeof chrome !== "undefined" && chrome.storage?.local) {
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [CACHE_KEY]: entry }, resolve);
-    });
+    return new Promise((r) => chrome.storage.local.set({ [key]: val }, r));
   }
-  localStorage.setItem(CACHE_KEY, JSON.stringify(entry));
+  localStorage.setItem(key, JSON.stringify(val));
 }
-
-async function clearCache() {
+async function storageRemove(key) {
   if (typeof chrome !== "undefined" && chrome.storage?.local) {
-    return new Promise((resolve) => {
-      chrome.storage.local.remove(CACHE_KEY, resolve);
-    });
+    return new Promise((r) => chrome.storage.local.remove(key, r));
   }
-  localStorage.removeItem(CACHE_KEY);
+  localStorage.removeItem(key);
 }
 
-// ── API ───────────────────────────────────────────────────────────────────
+const getConfig = () => storageGet(STORAGE_KEY);
+const saveConfig = (endpoint, mcp, key) => storageSet(STORAGE_KEY, { endpoint, mcp, key });
+
+async function getCached(key, ttl) {
+  const cached = await storageGet(key);
+  if (cached && cached.data) {
+    return { data: cached.data, isFresh: Date.now() - cached.ts < ttl };
+  }
+  return null;
+}
+const setCached = (key, data) => storageSet(key, { data, ts: Date.now() });
+
+// ── API ─────────────────────────────────────────────────────────────────
 
 async function fetchFocus() {
-  const config = await getConfig();
-  if (!config) throw new Error("Not configured");
-
-  const url = `${config.endpoint}?key=${config.key}`;
-  const res = await fetch(url);
+  const cfg = await getConfig();
+  if (!cfg) throw new Error("Not configured");
+  const res = await fetch(`${cfg.endpoint}?key=${cfg.key}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
-async function mcpCall(toolName, args = {}) {
-  const config = await getConfig();
-  if (!config) throw new Error("Not configured");
+async function fetchBrief() {
+  const cfg = await getConfig();
+  if (!cfg) return null;
+  const url = cfg.endpoint.replace("format-focus", "daily-brief");
+  const res = await fetch(`${url}?key=${cfg.key}`);
+  if (!res.ok) return null;
+  return res.json();
+}
 
-  const url = `${config.mcp}?key=${config.key}`;
-  const res = await fetch(url, {
+async function mcpCall(tool, args = {}) {
+  const cfg = await getConfig();
+  if (!cfg) throw new Error("Not configured");
+  const res = await fetch(`${cfg.mcp}?key=${cfg.key}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: Date.now(),
-      method: "tools/call",
-      params: { name: toolName, arguments: args },
-    }),
+    body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method: "tools/call", params: { name: tool, arguments: args } }),
   });
-
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
@@ -118,801 +79,571 @@ async function mcpCall(toolName, args = {}) {
 }
 
 async function markDone(id) {
-  await clearCache();
-  // Also mark merged tasks as done
-  const task = allTasks.find((t) => t.id === id);
-  const mergedIds = task?.merged_ids || [];
-  const promises = [mcpCall("update_thought", { id, status: "done" })];
-  for (const mid of mergedIds) {
-    promises.push(mcpCall("update_thought", { id: mid, status: "done" }));
-  }
-  await Promise.all(promises);
+  await storageRemove(CACHE_KEY);
+  const task = state.tasks.find((t) => t.id === id);
+  const merged = task?.merged_ids || [];
+  await Promise.all([
+    mcpCall("update_thought", { id, status: "done" }),
+    ...merged.map((mid) => mcpCall("update_thought", { id: mid, status: "done" })),
+  ]);
 }
 
-async function processUpdate(taskId, updateText) {
-  const config = await getConfig();
-  if (!config) throw new Error("Not configured");
-
-  // Derive process-update URL from format-focus endpoint
-  const processUrl = config.endpoint.replace("format-focus", "process-update");
-  const res = await fetch(`${processUrl}?key=${config.key}`, {
+async function processUpdate(taskId, text) {
+  const cfg = await getConfig();
+  if (!cfg) throw new Error("Not configured");
+  const url = cfg.endpoint.replace("format-focus", "process-update");
+  const res = await fetch(`${url}?key=${cfg.key}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ task_id: taskId, update_text: updateText }),
+    body: JSON.stringify({ task_id: taskId, update_text: text }),
   });
-
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   if (data.error) throw new Error(data.error);
-  await clearCache();
+  await storageRemove(CACHE_KEY);
   return data;
 }
 
-// ── Daily Brief ─────────────────────────────────────────────────────────
-
-const BRIEF_CACHE_KEY = "open-brain-brief-cache";
-const BRIEF_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-
-async function fetchBrief() {
-  const config = await getConfig();
-  if (!config) return null;
-
-  const briefUrl = config.endpoint.replace("format-focus", "daily-brief");
-  const res = await fetch(`${briefUrl}?key=${config.key}`);
-  if (!res.ok) return null;
-  return res.json();
-}
-
-async function getCachedBrief() {
-  try {
-    if (typeof chrome !== "undefined" && chrome.storage?.local) {
-      return new Promise((resolve) => {
-        chrome.storage.local.get(BRIEF_CACHE_KEY, (result) => {
-          const cached = result[BRIEF_CACHE_KEY];
-          if (cached && cached.data) {
-            const isFresh = Date.now() - cached.ts < BRIEF_CACHE_TTL_MS;
-            resolve({ data: cached.data, isFresh });
-          } else {
-            resolve(null);
-          }
-        });
-      });
-    }
-    return null;
-  } catch { return null; }
-}
-
-async function setCachedBrief(data) {
-  const entry = { data, ts: Date.now() };
-  if (typeof chrome !== "undefined" && chrome.storage?.local) {
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [BRIEF_CACHE_KEY]: entry }, resolve);
-    });
-  }
-}
-
-function renderBrief(data) {
-  if (!data || !data.brief) return;
-  const b = data.brief;
-
-  document.getElementById("greeting").textContent = b.greeting || getGreeting();
-
-  const focusEl = document.getElementById("brief-focus");
-  focusEl.textContent = b.focus || "";
-
-  const adviceEl = document.getElementById("brief-advice");
-  const hasAdvice = b.advice && b.advice.length > 0;
-  if (hasAdvice) {
-    adviceEl.innerHTML = b.advice.map(a => `<div class="brief-advice-item">${escapeHtml(a)}</div>`).join("");
-  }
-
-  const warningsEl = document.getElementById("brief-warnings");
-  const hasWarnings = b.warnings && b.warnings.length > 0;
-  if (hasWarnings) {
-    warningsEl.innerHTML = b.warnings.map(w => `<div class="brief-warning-item">${escapeHtml(w)}</div>`).join("");
-  }
-
-  const insightEl = document.getElementById("brief-insight");
-  if (b.insight) {
-    insightEl.textContent = b.insight;
-    insightEl.classList.remove("hidden");
-  }
-
-  // Only show the expandable section if there's advice/warnings/insight
-  if (hasAdvice || hasWarnings || b.insight) {
-    document.getElementById("brief").classList.remove("hidden");
-  }
-}
-
-async function loadBrief() {
-  // Show cached brief instantly
-  const cached = await getCachedBrief();
-  if (cached) {
-    renderBrief(cached.data);
-    if (!cached.isFresh) {
-      // Refresh in background
-      fetchBrief().then((data) => {
-        if (data && data.brief) {
-          renderBrief(data);
-          setCachedBrief(data);
-        }
-      }).catch(() => {});
-    }
-    return;
-  }
-  // No cache — fetch in background (don't block page load)
-  fetchBrief().then((data) => {
-    if (data && data.brief) {
-      renderBrief(data);
-      setCachedBrief(data);
-    }
-  }).catch(() => {});
-}
-
-// ── Sorting ──────────────────────────────────────────────────────────────
-
-function sortTasks(tasks) {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const nowMs = now.getTime();
-
-  return [...tasks].sort((a, b) => {
-    const areaOrder = { work: 0, finance: 1, learning: 2, personal: 3, health: 4, social: 5 };
-    const aArea = areaOrder[a.area] ?? 3;
-    const bArea = areaOrder[b.area] ?? 3;
-
-    const aDl = a.due_date ? new Date(a.due_date).getTime() : null;
-    const bDl = b.due_date ? new Date(b.due_date).getTime() : null;
-
-    const aOverdue = aDl && aDl < nowMs;
-    const bOverdue = bDl && bDl < nowMs;
-    const aHasDl = aDl !== null;
-    const bHasDl = bDl !== null;
-
-    if (aOverdue && !bOverdue) return -1;
-    if (!aOverdue && bOverdue) return 1;
-    if (aHasDl && !bHasDl) return -1;
-    if (!aHasDl && bHasDl) return 1;
-    if (aHasDl && bHasDl) return aDl - bDl;
-    if (aArea !== bArea) return aArea - bArea;
-    return 0;
-  });
-}
-
-// ── Rendering ────────────────────────────────────────────────────────────
+// ── Date/formatting helpers ─────────────────────────────────────────────
 
 function getGreeting() {
-  const hour = new Date().getHours();
-  if (hour < 6) return "Доброй ночи";
-  if (hour < 12) return "Доброе утро";
-  if (hour < 18) return "Добрый день";
+  const h = new Date().getHours();
+  if (h < 6) return "Доброй ночи";
+  if (h < 12) return "Доброе утро";
+  if (h < 18) return "Добрый день";
   return "Добрый вечер";
 }
 
-function formatDate() {
+function formatDateLong() {
   return new Date().toLocaleDateString("ru-RU", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
+    weekday: "short", day: "numeric", month: "short",
   });
 }
 
-function escapeHtml(text) {
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
+function escapeHtml(t) {
+  const d = document.createElement("div");
+  d.textContent = t == null ? "" : String(t);
+  return d.innerHTML;
 }
 
-function formatDeadline(dueDateStr) {
-  if (!dueDateStr) return null;
-  const dl = new Date(dueDateStr);
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const diffDays = Math.ceil((dl.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-
-  let label, cls;
-  if (diffDays < 0) {
-    label = `${Math.abs(diffDays)}д просрочен`;
-    cls = "overdue";
-  } else if (diffDays === 0) {
-    label = "сегодня";
-    cls = "urgent";
-  } else if (diffDays === 1) {
-    label = "завтра";
-    cls = "urgent";
-  } else if (diffDays <= 7) {
-    label = `${diffDays}д`;
-    cls = "";
-  } else {
-    label = dl.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-    cls = "";
-  }
-
-  return { label, cls };
+function formatDeadline(due) {
+  if (!due) return null;
+  const dl = new Date(due);
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const diff = Math.ceil((dl.getTime() - now.getTime()) / 86400000);
+  let label, cls = "";
+  if (diff < 0) { label = `-${Math.abs(diff)}Д ПРОСРОЧЕНО`; cls = "overdue"; }
+  else if (diff === 0) { label = "СЕГОДНЯ"; cls = "urgent"; }
+  else if (diff === 1) { label = "ЗАВТРА"; cls = "urgent"; }
+  else if (diff <= 7) { label = `ДО ${dl.toLocaleDateString("ru-RU", { weekday: "short" }).toUpperCase()}`; }
+  else { label = dl.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }).toUpperCase(); }
+  return { label, cls, diff };
 }
 
-function buildTagsHtml(task) {
-  let html = "";
-  const dl = formatDeadline(task.due_date);
-  if (dl) html += `<span class="task-deadline ${dl.cls}">${escapeHtml(dl.label)}</span>`;
-  if (task.area) html += `<span class="task-area">${escapeHtml(task.area)}</span>`;
-  if (task.topic) html += `<span class="task-topic">${escapeHtml(task.topic)}</span>`;
-  return html;
-}
+// ── Zone mapping (Cockpit) ──────────────────────────────────────────────
 
-function buildTaskHtml(task, index) {
-  return `
-    <li class="task-item" data-id="${task.id}">
-      <span class="task-number">${index + 1}</span>
-      <div class="task-body">
-        <div class="task-title">${escapeHtml(task.title)}</div>
-        <div class="task-tags">${buildTagsHtml(task)}</div>
-      </div>
-      <div class="task-check" data-id="${task.id}"></div>
-    </li>`;
-}
-
-// ── Global state ─────────────────────────────────────────────────────────
-
-let allTasks = [];
-let activeTaskId = null;
-
-// ── Detail panel ─────────────────────────────────────────────────────────
-
-function getDetailElements(viewId) {
-  const suffix = viewId === "all" ? "-all" : "";
-  return {
-    layout: document.getElementById(`split-layout${suffix}`),
-    panel: document.getElementById(`detail-panel${suffix}`),
-    title: document.getElementById(`detail-title${suffix}`),
-    tags: document.getElementById(`detail-tags${suffix}`),
-    content: document.getElementById(`detail-content${suffix}`),
-    input: document.getElementById(`detail-input${suffix}`),
-    sendBtn: document.getElementById(`detail-send${suffix}`),
-    doneBtn: document.getElementById(`detail-done${suffix}`),
-    closeBtn: document.getElementById(`detail-close${suffix}`),
-  };
-}
-
-function openDetail(taskId, viewId) {
-  const task = allTasks.find((t) => t.id === taskId);
-  if (!task) return;
-
-  activeTaskId = taskId;
-  const els = getDetailElements(viewId);
-
-  // Highlight active task
-  const listEl = viewId === "all"
-    ? document.getElementById("all-tasks-list")
-    : document.getElementById("tasks");
-  listEl.querySelectorAll(".task-item").forEach((item) => {
-    item.classList.toggle("active", item.dataset.id === taskId);
-  });
-
-  // Fill detail panel
-  els.title.textContent = task.title;
-  els.tags.innerHTML = buildTagsHtml(task);
-  els.content.textContent = task.content;
-  els.input.value = "";
-
-  // Show panel
-  els.layout.classList.add("has-detail");
-  els.panel.classList.remove("hidden");
-  els.panel.classList.add("open");
-  document.body.classList.add("detail-open");
-}
-
-function closeDetail(viewId) {
-  activeTaskId = null;
-  const els = getDetailElements(viewId);
-
-  els.layout.classList.remove("has-detail");
-  els.panel.classList.remove("open");
-  setTimeout(() => {
-    els.panel.classList.add("hidden");
-  }, 350);
-  document.body.classList.remove("detail-open");
-
-  // Remove active highlight
-  const listEl = viewId === "all"
-    ? document.getElementById("all-tasks-list")
-    : document.getElementById("tasks");
-  listEl.querySelectorAll(".task-item.active").forEach((item) => {
-    item.classList.remove("active");
-  });
-}
-
-function getCurrentView() {
-  return document.getElementById("all-tasks").classList.contains("hidden") ? "focus" : "all";
-}
-
-// ── Wire detail panel buttons ────────────────────────────────────────────
-
-function wireDetailPanel(viewId) {
-  const els = getDetailElements(viewId);
-
-  els.closeBtn.addEventListener("click", () => closeDetail(viewId));
-
-  els.doneBtn.addEventListener("click", async () => {
-    if (!activeTaskId) return;
-    const id = activeTaskId;
-    els.doneBtn.disabled = true;
-    els.doneBtn.textContent = "...";
-    try {
-      await markDone(id);
-      allTasks = allTasks.filter((t) => t.id !== id);
-      closeDetail(viewId);
-      if (viewId === "all") renderAllTasks();
-      else renderFocusTasks();
-    } catch (err) {
-      console.error("Done failed:", err);
-      els.doneBtn.disabled = false;
-      els.doneBtn.textContent = "Выполнено";
-    }
-  });
-
-  els.sendBtn.addEventListener("click", () => submitDetailUpdate(viewId));
-  els.input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      submitDetailUpdate(viewId);
-    }
-  });
-}
-
-async function submitDetailUpdate(viewId) {
-  if (!activeTaskId) return;
-  const els = getDetailElements(viewId);
-  const text = els.input.value.trim();
-  if (!text) return;
-
-  const id = activeTaskId;
-  els.sendBtn.disabled = true;
-  els.input.disabled = true;
-  els.sendBtn.textContent = "...";
-
-  try {
-    const result = await processUpdate(id, text);
-    const action = result.action || {};
-
-    // Update local state immediately for responsiveness
-    if (action.mark_done) {
-      allTasks = allTasks.filter((t) => t.id !== id);
-    } else {
-      const task = allTasks.find((t) => t.id === id);
-      if (task && action.append_to_content) {
-        const date = new Date().toLocaleDateString("ru-RU");
-        task.content = `${task.content}\n\n[${date}]: ${action.append_to_content}`;
-        els.content.textContent = task.content;
-      }
-    }
-
-    // Show immediate feedback
-    els.input.value = "";
-    els.sendBtn.textContent = "\u2713";
-
-    // Show notification
-    if (result.new_task_content) {
-      showNotification(`Новая задача: ${result.new_task_content}`);
-    } else if (action.mark_done) {
-      showNotification("Задача выполнена");
-    } else if (result.deadline_updated) {
-      const d = new Date(result.deadline_updated).toLocaleDateString("ru-RU");
-      showNotification(`Дедлайн сдвинут на ${d}`);
-    } else if (action.append_to_content) {
-      showNotification("Статус обновлён");
-    }
-
-    // Always refetch from format-focus to get fresh AI titles
-    // (process-update already busted the server cache)
-    try {
-      const data = await fetchFocus();
-      allTasks = data.tasks || [];
-      await setCachedTasks(data);
-    } catch {
-      // If refresh fails, keep local state
-    }
-    closeDetail(viewId);
-    if (viewId === "all") renderAllTasks();
-    else renderFocusTasks();
-  } catch (err) {
-    console.error("Update failed:", err);
-    els.sendBtn.textContent = "!";
-    setTimeout(() => { els.sendBtn.textContent = "\u2191"; }, 1500);
-  } finally {
-    els.sendBtn.disabled = false;
-    els.input.disabled = false;
-  }
-}
-
-function showNotification(text) {
-  let el = document.getElementById("notification");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "notification";
-    el.className = "notification";
-    document.body.appendChild(el);
-  }
-  el.textContent = text;
-  el.classList.add("show");
-  setTimeout(() => el.classList.remove("show"), 3000);
-}
-
-// ── Task list rendering ──────────────────────────────────────────────────
-
-function updateRemaining() {
-  const rem = document.getElementById("remaining");
-  const waiting = allTasks.length - TOP_N;
-  if (waiting > 0) {
-    rem.textContent = `+ ещё ${waiting} задач`;
-    rem.classList.remove("hidden");
-  } else {
-    rem.classList.add("hidden");
-  }
-}
-
-function bindTaskEvents(el, viewId) {
-  el.querySelectorAll(".task-check").forEach((cb) => {
-    cb.addEventListener("click", handleCheck);
-  });
-  el.querySelectorAll(".task-title").forEach((title) => {
-    title.addEventListener("click", () => {
-      const taskId = title.closest(".task-item").dataset.id;
-      if (activeTaskId === taskId) {
-        closeDetail(viewId);
-      } else {
-        openDetail(taskId, viewId);
-      }
-    });
-  });
-}
-
-function renderFocusTasks() {
-  const el = document.getElementById("tasks");
-
-  if (allTasks.length === 0) {
-    el.innerHTML = '<li class="task-item" style="opacity:1; text-align:center; display:block;"><span class="task-title" style="color:#444; cursor:default;">Нет открытых задач. Свободный день.</span></li>';
-    return;
-  }
-
-  const visible = allTasks.slice(0, TOP_N);
-  el.innerHTML = visible.map((task, i) => buildTaskHtml(task, i)).join("");
-  updateRemaining();
-  bindTaskEvents(el, "focus");
-}
-
-// 4 quadrants: group areas into logical blocks
-const QUADRANTS = [
-  { key: "work",     areas: ["work"],                label: "Работа",   color: "#3a5ba0" },
-  { key: "finance",  areas: ["finance"],              label: "Финансы",  color: "#8a6520" },
-  { key: "personal", areas: ["personal"],             label: "Личное",   color: "#6a4a8a" },
-  { key: "other",    areas: ["health", "learning", "social", "other"], label: "Прочее", color: "#2d6a4f" },
+const ZONES = [
+  { key: "work",     areas: ["work"],                          title: "Работа",    color: "oklch(0.65 0.15 250)" },
+  { key: "finance",  areas: ["finance"],                        title: "Финансы",   color: "oklch(0.68 0.13 80)"  },
+  { key: "personal", areas: ["personal"],                       title: "Личное",    color: "oklch(0.63 0.15 310)" },
+  { key: "other",    areas: ["health", "learning", "social", "other"], title: "Прочее", color: "oklch(0.65 0.12 160)" },
 ];
 
-function buildCompactTaskHtml(task, idx) {
-  let dlHtml = "";
-  const dl = formatDeadline(task.due_date);
-  if (dl) dlHtml = `<span class="q-deadline ${dl.cls}">${escapeHtml(dl.label)}</span>`;
-
-  let topicHtml = "";
-  if (task.topic) topicHtml = `<span class="q-topic">${escapeHtml(task.topic)}</span>`;
-
-  return `
-    <li class="q-item task-item" data-id="${task.id}">
-      <div class="q-text task-title">${escapeHtml(task.title)}</div>
-      <div class="q-meta">${dlHtml}${topicHtml}</div>
-      <div class="task-check q-check" data-id="${task.id}"></div>
-    </li>`;
+function zoneOf(task) {
+  const a = task.area || "other";
+  return ZONES.find((z) => z.areas.includes(a)) || ZONES[ZONES.length - 1];
 }
 
-function renderAllTasks() {
-  const el = document.getElementById("all-tasks-list");
+// ── Global state ────────────────────────────────────────────────────────
 
-  if (allTasks.length === 0) {
-    el.innerHTML = '<div class="group-empty">Нет открытых задач</div>';
-    return;
+const state = {
+  tasks: [],
+  brief: null,
+  activeTaskId: null,
+  activeZone: null,
+};
+
+// ── Renderers ───────────────────────────────────────────────────────────
+
+function renderLeftBrief() {
+  const greet = document.querySelector(".b-brief-greet");
+  const date = document.querySelector(".b-brief-date");
+  if (greet) greet.textContent = getGreeting() + ", ты";
+  if (date) date.textContent = formatDateLong();
+
+  // Focus/Advice/Warnings sections in the left sidebar.
+  // The markup has .b-brief-section.focus + notes + warnings — keep them but fill with real data.
+  const b = state.brief?.brief;
+
+  const focusSec = document.querySelector(".b-brief-section.focus");
+  if (focusSec) {
+    const content = focusSec.querySelector(".b-brief-body, p") || focusSec.querySelector("div:not(h4)");
+    const h4 = focusSec.querySelector("h4");
+    if (h4) h4.textContent = "Фокус дня";
+    // Replace everything after h4 with brief focus text
+    [...focusSec.children].forEach((c) => { if (c !== h4) c.remove(); });
+    const p = document.createElement("div");
+    p.className = "b-brief-body";
+    p.textContent = b?.focus || "Брифинг появится после подключения.";
+    focusSec.appendChild(p);
   }
 
-  // Bucket tasks into quadrants
-  const buckets = {};
-  for (const q of QUADRANTS) buckets[q.key] = [];
-
-  for (const task of allTasks) {
-    const area = task.area || "other";
-    const quad = QUADRANTS.find((q) => q.areas.includes(area)) || QUADRANTS[3];
-    buckets[quad.key].push(task);
-  }
-
-  let html = '<div class="quadrant-grid">';
-
-  for (const q of QUADRANTS) {
-    const tasks = buckets[q.key];
-    const count = tasks.length;
-
-    html += `<div class="quadrant" data-area="${q.key}">`;
-    html += `<div class="q-header">
-      <div class="q-indicator" style="background: ${q.color}"></div>
-      <span class="q-label">${q.label}</span>
-      <span class="q-count">${count}</span>
-    </div>`;
-
-    if (count === 0) {
-      html += '<div class="q-empty">Нет задач</div>';
+  // Notes = advice (optional)
+  const adviceSec = document.querySelector(".b-brief-section:not(.focus):not(.warn)");
+  if (adviceSec) {
+    const h4 = adviceSec.querySelector("h4");
+    if (h4) h4.textContent = "Заметки";
+    [...adviceSec.children].forEach((c) => { if (c !== h4) c.remove(); });
+    const list = document.createElement("div");
+    list.className = "b-brief-body";
+    if (b?.advice?.length) {
+      list.innerHTML = b.advice.map((a) => `<div class="brief-line">— ${escapeHtml(a)}</div>`).join("");
     } else {
-      html += '<ul class="q-list">';
-      for (const task of tasks) {
-        html += buildCompactTaskHtml(task);
-      }
-      html += '</ul>';
+      list.innerHTML = '<div class="brief-line" style="opacity:.5">Нет заметок</div>';
     }
-
-    html += '</div>';
+    adviceSec.appendChild(list);
   }
 
-  html += '</div>';
-  el.innerHTML = html;
-  bindTaskEvents(el, "all");
-}
-
-async function handleCheck(e) {
-  const cb = e.currentTarget;
-  const id = cb.dataset.id;
-  const item = cb.closest(".task-item");
-
-  if (item.classList.contains("leaving")) return;
-
-  cb.classList.add("done");
-  item.classList.add("checked");
-
-  try {
-    await markDone(id);
-  } catch (err) {
-    cb.classList.remove("done");
-    item.classList.remove("checked");
-    console.error("Failed:", err);
-    return;
-  }
-
-  // Close detail if this task was open
-  if (activeTaskId === id) {
-    closeDetail(getCurrentView());
-  }
-
-  allTasks = allTasks.filter((t) => t.id !== id);
-  item.classList.add("leaving");
-
-  item.addEventListener("animationend", () => {
-    const view = getCurrentView();
-    if (view === "all") {
-      renderAllTasks();
+  const warnSec = document.querySelector(".b-brief-section.warn");
+  if (warnSec) {
+    const h4 = warnSec.querySelector("h4");
+    if (h4) h4.textContent = "Внимание";
+    [...warnSec.children].forEach((c) => { if (c !== h4) c.remove(); });
+    const list = document.createElement("div");
+    list.className = "b-brief-body";
+    if (b?.warnings?.length) {
+      list.innerHTML = b.warnings.map((w) => `<div class="brief-line">— ${escapeHtml(w)}</div>`).join("");
     } else {
-      const el = document.getElementById("tasks");
-      const visible = allTasks.slice(0, TOP_N);
-
-      if (visible.length === 0) {
-        el.innerHTML = '<li class="task-item entering" style="opacity:1; text-align:center; display:block;"><span class="task-title" style="color:#444; cursor:default;">Все задачи выполнены. Красота.</span></li>';
-        document.getElementById("remaining").classList.add("hidden");
-        return;
-      }
-
-      el.innerHTML = visible.map((task, i) => buildTaskHtml(task, i)).join("");
-      updateRemaining();
-
-      const items = el.querySelectorAll(".task-item");
-      if (items.length > 0) {
-        items[items.length - 1].classList.add("entering");
-      }
-
-      bindTaskEvents(el, "focus");
+      list.innerHTML = '<div class="brief-line" style="opacity:.5">Всё под контролем</div>';
     }
-  }, { once: true });
-}
-
-// ── Quick capture ────────────────────────────────────────────────────────
-
-async function captureTask(text) {
-  const input = document.getElementById("capture-input");
-  const btn = document.getElementById("capture-btn");
-
-  input.disabled = true;
-  btn.disabled = true;
-  btn.textContent = "...";
-
-  try {
-    await mcpCall("capture_thought", { content: text, type: "task" });
-    input.value = "";
-    await clearCache();
-
-    // Refresh tasks
-    try {
-      const data = await fetchFocus();
-      allTasks = data.tasks || [];
-      await setCachedTasks(data);
-      renderFocusTasks();
-    } catch {
-      // silent
-    }
-
-    showNotification("Задача добавлена");
-  } catch (err) {
-    console.error("Capture failed:", err);
-    btn.textContent = "!";
-    setTimeout(() => { btn.textContent = "\u2191"; }, 1500);
-  } finally {
-    input.disabled = false;
-    btn.disabled = false;
-    btn.textContent = "\u2191";
-    input.focus();
+    warnSec.appendChild(list);
   }
 }
 
-// ── Explore / Collapse ───────────────────────────────────────────────────
+function renderHomeMain() {
+  const main = document.getElementById("b-home-main");
+  if (!main) return;
 
-function showAllTasks() {
-  closeDetail("focus");
-  document.getElementById("focus").classList.add("hidden");
-  document.getElementById("all-tasks").classList.remove("hidden");
-  document.body.classList.add("all-open");
-  renderAllTasks();
+  const countBtn = document.getElementById("b-count-btn");
+  const total = state.tasks.length;
+  const overdue = state.tasks.filter((t) => {
+    const d = formatDeadline(t.due_date);
+    return d && d.diff < 0;
+  }).length;
+  if (countBtn) {
+    countBtn.innerHTML = `${total} открытых${overdue ? ` · ${overdue} просрочено` : ""}<span class="arrow">→</span>`;
+  }
+
+  // Remove any existing .b-task cards (but keep .b-main-head)
+  main.querySelectorAll(".b-task").forEach((n) => n.remove());
+
+  const focusTasks = state.tasks.slice(0, TOP_N);
+  const h2 = main.querySelector(".b-main-head h2");
+  if (h2) {
+    if (focusTasks.length === 0) h2.textContent = "Свободный день";
+    else if (focusTasks.length === 1) h2.textContent = "Сегодня — одна задача";
+    else if (focusTasks.length === 2) h2.textContent = "Сегодня — две задачи";
+    else h2.textContent = "Сегодня — три задачи";
+  }
+
+  focusTasks.forEach((task, i) => {
+    const card = document.createElement("div");
+    card.className = "b-task" + (i === 0 ? " primary" : "");
+    card.dataset.task = String(task.id);
+    const dl = formatDeadline(task.due_date);
+    const dlPill = dl ? `<span class="pill dl ${dl.cls}">${escapeHtml(dl.label)}</span>` : "";
+    const areaPill = task.area ? `<span class="pill area">${escapeHtml(task.area)}</span>` : "";
+    const topicPill = task.topic ? `<span class="pill topic">${escapeHtml(task.topic)}</span>` : "";
+
+    // Use first non-empty line of content as "why"
+    const why = (task.content || "").split("\n").map((s) => s.trim()).filter(Boolean)[0] || "";
+
+    card.innerHTML = `
+      <div class="b-task-num">${i + 1}</div>
+      <div class="b-task-body">
+        <div class="b-task-title">${escapeHtml(task.title)}</div>
+        ${why ? `<p class="b-task-why">${escapeHtml(why)}</p>` : ""}
+        <div class="b-task-meta">
+          ${areaPill}${topicPill}${dlPill}
+        </div>
+      </div>
+      <span class="b-task-open">OPEN →</span>
+    `;
+    card.addEventListener("click", () => openTask(task.id));
+    main.appendChild(card);
+  });
 }
 
-function showFocus() {
-  closeDetail("all");
-  document.getElementById("all-tasks").classList.add("hidden");
-  document.getElementById("focus").classList.remove("hidden");
-  document.body.classList.remove("all-open");
-  renderFocusTasks();
+function renderAllView() {
+  const grid = document.getElementById("b-all-grid");
+  const head = document.querySelector(".b-all-head h1");
+  const sub = document.querySelector(".b-all-head .sub");
+  const filters = document.querySelector(".b-all-filters");
+
+  // Header
+  const total = state.tasks.length;
+  const working = state.tasks.length; // we don't have a "working" flag, show all open
+  const overdue = state.tasks.filter((t) => { const d = formatDeadline(t.due_date); return d && d.diff < 0; }).length;
+  const week = state.tasks.filter((t) => { const d = formatDeadline(t.due_date); return d && d.diff >= 0 && d.diff <= 7; }).length;
+  if (head) head.innerHTML = `<span class="n">${total}</span> открытые задачи`;
+  if (sub) sub.textContent = `По всем зонам${overdue ? ` · ${overdue} просрочено` : ""}`;
+  if (filters) {
+    filters.innerHTML = `
+      <button class="active" data-afilter="all">ВСЕ · ${total}</button>
+      <button data-afilter="overdue">ПРОСРОЧ · ${overdue}</button>
+      <button data-afilter="week">ЭТА НЕД · ${week}</button>
+    `;
+    filters.querySelectorAll("button").forEach((b) => b.addEventListener("click", (e) => {
+      filters.querySelectorAll("button").forEach((x) => x.classList.toggle("active", x === b));
+      renderAllGrid(b.dataset.afilter);
+    }));
+  }
+
+  renderAllGrid("all");
 }
 
-// ── Settings ─────────────────────────────────────────────────────────────
+function renderAllGrid(filter) {
+  const grid = document.getElementById("b-all-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+
+  let pool = state.tasks;
+  if (filter === "overdue") pool = pool.filter((t) => { const d = formatDeadline(t.due_date); return d && d.diff < 0; });
+  else if (filter === "week") pool = pool.filter((t) => { const d = formatDeadline(t.due_date); return d && d.diff >= 0 && d.diff <= 7; });
+
+  ZONES.forEach((z) => {
+    const zTasks = pool.filter((t) => zoneOf(t).key === z.key);
+    const card = document.createElement("div");
+    card.className = "b-all-zone";
+    card.style.setProperty("--zone-c", z.color);
+    const rows = zTasks.slice(0, 4).map((t) => {
+      const dl = formatDeadline(t.due_date);
+      const dlPill = dl ? `<span class="pill dl ${dl.cls}">${escapeHtml(dl.label)}</span>` : "";
+      const topicPill = t.topic ? `<span class="pill topic">${escapeHtml(t.topic)}</span>` : "";
+      return `<div class="b-all-row" data-tid="${t.id}"><div class="t">${escapeHtml(t.title)}</div><div class="r">${topicPill}${dlPill}</div></div>`;
+    }).join("");
+
+    card.innerHTML = `
+      <div class="b-all-zone-head" data-zopen="${z.key}">
+        <div class="b-all-zone-title"><span class="n">${zTasks.length}</span> ${escapeHtml(z.title)}</div>
+        <span class="link">ОТКРЫТЬ ЗОНУ →</span>
+      </div>
+      ${rows || '<div class="b-all-row" style="opacity:.4"><div class="t">— пусто —</div><div class="r"></div></div>'}
+    `;
+    grid.appendChild(card);
+  });
+
+  grid.querySelectorAll("[data-zopen]").forEach((el) => {
+    el.addEventListener("click", (e) => { e.stopPropagation(); document.body.dataset.from = "all"; openZone(el.dataset.zopen); });
+  });
+  grid.querySelectorAll("[data-tid]").forEach((el) => {
+    el.addEventListener("click", (e) => { e.stopPropagation(); document.body.dataset.from = "all"; openTask(parseInt(el.dataset.tid, 10)); });
+  });
+}
+
+function renderTaskView(taskId) {
+  const task = state.tasks.find((t) => t.id === taskId);
+  if (!task) return;
+
+  const idx = state.tasks.findIndex((t) => t.id === taskId);
+  const rankEl = document.getElementById("btv-rank");
+  if (rankEl) {
+    if (idx >= 0 && idx < TOP_N) {
+      rankEl.innerHTML = `${idx + 1}<span class="of">/ ${Math.min(TOP_N, state.tasks.length)} сегодня</span>`;
+      rankEl.style.color = "var(--accent-blue)";
+    } else {
+      rankEl.innerHTML = `·<span class="of">open task</span>`;
+      rankEl.style.color = "var(--text-4)";
+    }
+  }
+
+  const z = zoneOf(task);
+  const kickEl = document.getElementById("btv-kick");
+  if (kickEl) kickEl.textContent = `${(idx === 0 ? "PRIMARY · " : "")}${z.title.toUpperCase()}${task.topic ? " · " + String(task.topic).toUpperCase() : ""}`;
+
+  const titleEl = document.getElementById("btv-title");
+  if (titleEl) titleEl.textContent = task.title;
+
+  const why = (task.content || "").split("\n").map((s) => s.trim()).filter(Boolean)[0] || "";
+  const whyEl = document.getElementById("btv-why");
+  if (whyEl) whyEl.textContent = why;
+
+  const metaEl = document.getElementById("btv-meta");
+  if (metaEl) {
+    const dl = formatDeadline(task.due_date);
+    metaEl.innerHTML = `
+      ${task.area ? `<span class="pill area">${escapeHtml(task.area)}</span>` : ""}
+      ${task.topic ? `<span class="pill topic">${escapeHtml(task.topic)}</span>` : ""}
+      ${dl ? `<span class="pill dl ${dl.cls}">${escapeHtml(dl.label)}</span>` : ""}
+    `;
+  }
+
+  const contentEl = document.getElementById("btv-content");
+  if (contentEl) contentEl.textContent = task.content || "";
+
+  const crumb = document.getElementById("b-crumb-label");
+  if (crumb) crumb.textContent = task.title;
+}
+
+function renderZoneView(zoneKey) {
+  const z = ZONES.find((x) => x.key === zoneKey);
+  if (!z) return;
+  const zTasks = state.tasks.filter((t) => zoneOf(t).key === zoneKey);
+
+  const numEl = document.getElementById("bzv-num");
+  const titleEl = document.getElementById("bzv-title");
+  const subEl = document.getElementById("bzv-sub");
+  const listEl = document.getElementById("bzv-list");
+
+  if (numEl) numEl.textContent = String(zTasks.length);
+  if (titleEl) titleEl.textContent = z.title;
+  if (subEl) {
+    const overdue = zTasks.filter((t) => { const d = formatDeadline(t.due_date); return d && d.diff < 0; }).length;
+    subEl.textContent = zTasks.length
+      ? `${zTasks.length} открытых${overdue ? ` · ${overdue} просрочено` : ""}`
+      : "Пусто";
+  }
+
+  if (listEl) {
+    listEl.innerHTML = "";
+    zTasks.forEach((t) => {
+      const dl = formatDeadline(t.due_date);
+      const dlPill = dl ? `<span class="pill dl ${dl.cls}">${escapeHtml(dl.label)}</span>` : "";
+      const topicPill = t.topic ? `<span class="pill topic">${escapeHtml(t.topic)}</span>` : "";
+      const row = document.createElement("div");
+      row.className = "b-zv-row";
+      row.dataset.tid = String(t.id);
+      row.innerHTML = `
+        <div class="b-zv-title">${escapeHtml(t.title)}</div>
+        <div class="b-zv-meta">${topicPill}${dlPill}</div>
+      `;
+      row.addEventListener("click", () => { document.body.dataset.from = "zone"; openTask(t.id); });
+      listEl.appendChild(row);
+    });
+  }
+
+  const crumb = document.getElementById("b-crumb-label");
+  if (crumb) crumb.textContent = z.title;
+}
+
+// ── Navigation ──────────────────────────────────────────────────────────
+
+function goHome() {
+  document.body.dataset.screen = "home";
+  const crumb = document.getElementById("b-crumb-label");
+  if (crumb) crumb.textContent = "";
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
+
+function openAll() {
+  document.body.dataset.screen = "all";
+  renderAllView();
+  const crumb = document.getElementById("b-crumb-label");
+  if (crumb) crumb.textContent = "Все задачи";
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
+
+function openTask(id) {
+  state.activeTaskId = id;
+  document.body.dataset.screen = "task";
+  document.body.dataset.from = document.body.dataset.from || "home";
+  renderTaskView(id);
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
+
+function openZone(key) {
+  state.activeZone = key;
+  document.body.dataset.screen = "zone";
+  document.body.dataset.zone = key;
+  renderZoneView(key);
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
+
+function goBack() {
+  const screen = document.body.dataset.screen;
+  const from = document.body.dataset.from;
+  if (screen === "task" && from === "zone" && document.body.dataset.zone) {
+    openZone(document.body.dataset.zone);
+    document.body.dataset.from = "home";
+  } else if ((screen === "task" || screen === "zone") && from === "all") {
+    openAll();
+    document.body.dataset.from = "home";
+  } else {
+    goHome();
+    document.body.dataset.from = "home";
+  }
+}
+
+// ── Settings overlay ────────────────────────────────────────────────────
 
 async function showSettings() {
-  const config = await getConfig();
-  document.getElementById("settings-endpoint").value = config?.endpoint || "";
-  document.getElementById("settings-mcp").value = config?.mcp || "";
-  document.getElementById("settings-key").value = config?.key || "";
+  const cfg = (await getConfig()) || {};
+  document.getElementById("settings-endpoint").value = cfg.endpoint || "";
+  document.getElementById("settings-mcp").value = cfg.mcp || "";
+  document.getElementById("settings-key").value = cfg.key || "";
   document.getElementById("settings-overlay").classList.remove("hidden");
 }
-
 function hideSettings() {
   document.getElementById("settings-overlay").classList.add("hidden");
 }
 
-document.getElementById("gear-btn").addEventListener("click", showSettings);
-document.getElementById("setup-btn")?.addEventListener("click", showSettings);
-document.getElementById("settings-cancel").addEventListener("click", hideSettings);
-document.getElementById("settings-save").addEventListener("click", async () => {
-  const endpoint = document.getElementById("settings-endpoint").value.trim();
-  const mcp = document.getElementById("settings-mcp").value.trim();
-  const key = document.getElementById("settings-key").value.trim();
+// ── State displays ──────────────────────────────────────────────────────
 
-  if (!endpoint || !key) {
-    if (!endpoint) document.getElementById("settings-endpoint").style.borderColor = "#c66";
-    if (!key) document.getElementById("settings-key").style.borderColor = "#c66";
-    return;
-  }
+function showLoading(msg = "Загружаю…") {
+  document.getElementById("ob-loading").textContent = msg;
+  document.getElementById("ob-loading").classList.remove("hidden");
+  document.getElementById("ob-error").classList.add("hidden");
+  document.getElementById("ob-noconfig").classList.add("hidden");
+  document.body.classList.add("ob-busy");
+}
+function showError(msg) {
+  document.getElementById("ob-loading").classList.add("hidden");
+  const e = document.getElementById("ob-error");
+  e.textContent = `Ошибка: ${msg}`;
+  e.classList.remove("hidden");
+  document.body.classList.remove("ob-busy");
+}
+function showNoConfig() {
+  document.getElementById("ob-loading").classList.add("hidden");
+  document.getElementById("ob-error").classList.add("hidden");
+  document.getElementById("ob-noconfig").classList.remove("hidden");
+  document.body.classList.add("ob-busy");
+}
+function showReady() {
+  document.getElementById("ob-loading").classList.add("hidden");
+  document.getElementById("ob-error").classList.add("hidden");
+  document.getElementById("ob-noconfig").classList.add("hidden");
+  document.body.classList.remove("ob-busy");
+}
 
-  await saveConfig(endpoint, mcp, key);
-  hideSettings();
-  init();
-});
+// ── Init & data loading ─────────────────────────────────────────────────
 
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") {
-    const view = getCurrentView();
-    if (activeTaskId) {
-      closeDetail(view);
-    } else if (view === "all") {
-      showFocus();
-    } else {
-      hideSettings();
+async function loadData(opts = { force: false }) {
+  const cached = await getCached(CACHE_KEY, CACHE_TTL_MS);
+  if (cached && !opts.force) {
+    state.tasks = cached.data.tasks || [];
+    renderAll();
+    showReady();
+    if (!cached.isFresh) {
+      fetchFocus().then((data) => {
+        state.tasks = data.tasks || [];
+        setCached(CACHE_KEY, data);
+        renderAll();
+      }).catch(() => {});
     }
-  }
-});
-
-// Brief toggle
-document.getElementById("brief-toggle").addEventListener("click", () => {
-  const detailsEl = document.getElementById("brief-details");
-  const btn = document.getElementById("brief-toggle");
-
-  const isOpen = detailsEl.classList.contains("open");
-  if (isOpen) {
-    detailsEl.classList.remove("open");
-    btn.textContent = "Подробнее";
   } else {
-    detailsEl.classList.add("open");
-    btn.textContent = "Свернуть";
-  }
-});
-
-document.getElementById("explore-btn").addEventListener("click", showAllTasks);
-document.getElementById("collapse-btn").addEventListener("click", showFocus);
-document.getElementById("remaining").addEventListener("click", showAllTasks);
-
-// Quick capture
-document.getElementById("capture-btn").addEventListener("click", () => {
-  const text = document.getElementById("capture-input").value.trim();
-  if (text) captureTask(text);
-});
-document.getElementById("capture-input").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    const text = e.target.value.trim();
-    if (text) captureTask(text);
-  }
-});
-
-// Wire both detail panels
-wireDetailPanel("focus");
-wireDetailPanel("all");
-
-// ── Init ─────────────────────────────────────────────────────────────────
-
-async function init() {
-  document.getElementById("greeting").textContent = getGreeting();
-  document.getElementById("date").textContent = formatDate();
-
-  const config = await getConfig();
-
-  document.getElementById("loading").classList.remove("hidden");
-  document.getElementById("error").classList.add("hidden");
-  document.getElementById("no-config").classList.add("hidden");
-  document.getElementById("focus").classList.add("hidden");
-  document.getElementById("all-tasks").classList.add("hidden");
-  document.body.classList.remove("all-open");
-  document.body.classList.remove("detail-open");
-
-  if (!config) {
-    document.getElementById("loading").classList.add("hidden");
-    document.getElementById("no-config").classList.remove("hidden");
-    return;
-  }
-
-  try {
-    // Always show cached data instantly (even if stale), then refresh in background
-    const cached = await getCachedTasks();
-    if (cached) {
-      allTasks = cached.data.tasks || [];
-      document.getElementById("loading").classList.add("hidden");
-      document.getElementById("focus").classList.remove("hidden");
-      document.getElementById("explore-btn").classList.remove("hidden");
-      document.getElementById("capture-bar").classList.remove("hidden");
-      renderFocusTasks();
-      loadBrief(); // Load advisor brief
-
-      // Only refresh if stale
-      if (!cached.isFresh) {
-        fetchFocus().then((data) => {
-          allTasks = data.tasks || [];
-          setCachedTasks(data);
-          if (!activeTaskId) {
-            const view = getCurrentView();
-            if (view === "all") renderAllTasks();
-            else renderFocusTasks();
-          }
-        }).catch((err) => console.error("Background refresh failed:", err));
-      }
+    try {
+      const data = await fetchFocus();
+      state.tasks = data.tasks || [];
+      await setCached(CACHE_KEY, data);
+      renderAll();
+      showReady();
+    } catch (err) {
+      showError(err.message);
       return;
     }
+  }
 
-    // No cache at all — must wait for fetch
-    const data = await fetchFocus();
-    allTasks = data.tasks || [];
-    await setCachedTasks(data);
-
-    document.getElementById("loading").classList.add("hidden");
-    document.getElementById("focus").classList.remove("hidden");
-    document.getElementById("explore-btn").classList.remove("hidden");
-    document.getElementById("capture-bar").classList.remove("hidden");
-
-    renderFocusTasks();
-    loadBrief(); // Load advisor brief
-  } catch (err) {
-    document.getElementById("loading").classList.add("hidden");
-    const errorEl = document.getElementById("error");
-    errorEl.textContent = `Ошибка: ${err.message}`;
-    errorEl.classList.remove("hidden");
+  // Brief (separate endpoint, slower, non-blocking)
+  const briefCached = await getCached(BRIEF_CACHE_KEY, BRIEF_CACHE_TTL_MS);
+  if (briefCached) {
+    state.brief = briefCached.data;
+    renderLeftBrief();
+    if (!briefCached.isFresh) {
+      fetchBrief().then((b) => { if (b) { state.brief = b; setCached(BRIEF_CACHE_KEY, b); renderLeftBrief(); } }).catch(() => {});
+    }
+  } else {
+    fetchBrief().then((b) => { if (b) { state.brief = b; setCached(BRIEF_CACHE_KEY, b); renderLeftBrief(); } }).catch(() => {});
   }
 }
 
-init();
+function renderAll() {
+  renderLeftBrief();
+  renderHomeMain();
+  if (document.body.dataset.screen === "all") renderAllView();
+  if (document.body.dataset.screen === "task" && state.activeTaskId != null) renderTaskView(state.activeTaskId);
+  if (document.body.dataset.screen === "zone" && state.activeZone) renderZoneView(state.activeZone);
+}
+
+async function init() {
+  // Wire settings
+  document.getElementById("settings-fab").addEventListener("click", showSettings);
+  document.getElementById("ob-setup-btn").addEventListener("click", showSettings);
+  document.getElementById("settings-cancel").addEventListener("click", hideSettings);
+  document.getElementById("settings-save").addEventListener("click", async () => {
+    const endpoint = document.getElementById("settings-endpoint").value.trim();
+    const mcp = document.getElementById("settings-mcp").value.trim();
+    const key = document.getElementById("settings-key").value.trim();
+    if (!endpoint || !key) return;
+    await saveConfig(endpoint, mcp, key);
+    hideSettings();
+    init();
+  });
+
+  // Wire count btn (Explore-all)
+  const countBtn = document.getElementById("b-count-btn");
+  if (countBtn) countBtn.addEventListener("click", openAll);
+
+  // Crumb back
+  document.querySelectorAll('[data-goto="home"]').forEach((b) => b.addEventListener("click", goBack));
+
+  // Esc
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (["task", "zone", "all"].includes(document.body.dataset.screen)) goBack();
+      else if (!document.getElementById("settings-overlay").classList.contains("hidden")) hideSettings();
+    }
+  });
+
+  // Task view actions (done / update-like via capture)
+  const doneBtn = document.querySelector(".b-tv-actions .btn-d");
+  if (doneBtn) doneBtn.addEventListener("click", async () => {
+    if (state.activeTaskId == null) return;
+    doneBtn.disabled = true;
+    doneBtn.textContent = "…";
+    try {
+      await markDone(state.activeTaskId);
+      state.tasks = state.tasks.filter((t) => t.id !== state.activeTaskId);
+      state.activeTaskId = null;
+      renderAll();
+      goBack();
+    } catch (err) {
+      doneBtn.textContent = "! " + err.message;
+    } finally {
+      setTimeout(() => { doneBtn.disabled = false; doneBtn.textContent = "✓ Выполнено"; }, 1500);
+    }
+  });
+
+  const startBtn = document.querySelector(".b-tv-actions .btn-p");
+  if (startBtn) startBtn.addEventListener("click", async () => {
+    // No "start" backend — fire a tiny update so it's journalled
+    if (state.activeTaskId == null) return;
+    startBtn.disabled = true;
+    startBtn.textContent = "…";
+    try {
+      await processUpdate(state.activeTaskId, "Начал работу");
+      const data = await fetchFocus();
+      state.tasks = data.tasks || [];
+      await setCached(CACHE_KEY, data);
+      renderAll();
+      renderTaskView(state.activeTaskId);
+      startBtn.textContent = "✓";
+    } catch (err) {
+      startBtn.textContent = "!";
+    } finally {
+      setTimeout(() => { startBtn.disabled = false; startBtn.textContent = "Начать →"; }, 1500);
+    }
+  });
+
+  // Show config state or load data
+  const cfg = await getConfig();
+  if (!cfg) {
+    showNoConfig();
+    return;
+  }
+
+  showLoading();
+  await loadData();
+}
+
+document.addEventListener("DOMContentLoaded", init);

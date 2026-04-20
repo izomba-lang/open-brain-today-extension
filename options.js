@@ -1,70 +1,66 @@
-const STORAGE_KEY = "open-brain-today-config";
+/* Open Brain — Options page
+ * Пишет конфиг в chrome.storage.local под ключом open-brain-today-config
+ */
 
-async function getConfig() {
-  return new Promise((resolve) => {
-    chrome.storage.local.get(STORAGE_KEY, (result) => {
-      resolve(result[STORAGE_KEY] || null);
-    });
+const KEY = "open-brain-today-config";
+
+function storageGet(k) {
+  return new Promise((r) => {
+    if (chrome?.storage?.local) chrome.storage.local.get(k, (res) => r(res[k]));
+    else r(JSON.parse(localStorage.getItem(k) || "null"));
+  });
+}
+function storageSet(k, v) {
+  return new Promise((r) => {
+    if (chrome?.storage?.local) chrome.storage.local.set({ [k]: v }, r);
+    else { localStorage.setItem(k, JSON.stringify(v)); r(); }
   });
 }
 
-async function saveConfig(endpoint, mcp, key) {
-  const config = { endpoint, mcp, key };
-  return new Promise((resolve) => {
-    chrome.storage.local.set({ [STORAGE_KEY]: config }, resolve);
-  });
+function setStatus(msg, isError = false) {
+  const el = document.getElementById("status");
+  el.textContent = msg;
+  el.classList.toggle("error", isError);
 }
 
 async function load() {
-  const config = await getConfig();
-  if (config) {
-    document.getElementById("endpoint").value = config.endpoint || "";
-    document.getElementById("mcp").value = config.mcp || "";
-    document.getElementById("key").value = config.key || "";
-  }
+  const cfg = (await storageGet(KEY)) || {};
+  document.getElementById("endpoint").value = cfg.endpoint || "";
+  document.getElementById("mcp").value = cfg.mcp || "";
+  document.getElementById("key").value = cfg.key || "";
 }
 
-document.getElementById("save").addEventListener("click", async () => {
+async function save() {
   const endpoint = document.getElementById("endpoint").value.trim();
   const mcp = document.getElementById("mcp").value.trim();
   const key = document.getElementById("key").value.trim();
-
   if (!endpoint || !key) {
-    document.getElementById("status").textContent = "Заполни URL и ключ";
-    document.getElementById("status").className = "status error";
+    setStatus("Нужны как минимум Format Focus URL и API Key", true);
     return;
   }
+  await storageSet(KEY, { endpoint, mcp, key });
+  setStatus("Сохранено. Открой новую вкладку, чтобы увидеть задачи.");
+}
 
-  await saveConfig(endpoint, mcp, key);
-  document.getElementById("status").textContent = "Сохранено";
-  document.getElementById("status").className = "status";
-});
-
-document.getElementById("test").addEventListener("click", async () => {
+async function test() {
   const endpoint = document.getElementById("endpoint").value.trim();
   const key = document.getElementById("key").value.trim();
-  const status = document.getElementById("status");
-
   if (!endpoint || !key) {
-    status.textContent = "Заполни URL и ключ";
-    status.className = "status error";
+    setStatus("Заполни URL и ключ перед тестом", true);
     return;
   }
-
-  status.textContent = "Тестирую...";
-  status.className = "status";
-
+  setStatus("Проверяю…");
   try {
-    const res = await fetch(`${endpoint}?key=${key}`);
+    const res = await fetch(`${endpoint}?key=${encodeURIComponent(key)}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const count = data.tasks?.length ?? 0;
-    status.textContent = `OK — ${count} задач`;
-    status.className = "status";
+    const n = (data?.tasks || []).length;
+    setStatus(`OK · получено задач: ${n}`);
   } catch (err) {
-    status.textContent = `Ошибка: ${err.message}`;
-    status.className = "status error";
+    setStatus(`Ошибка: ${err.message}`, true);
   }
-});
+}
 
+document.getElementById("save").addEventListener("click", save);
+document.getElementById("test").addEventListener("click", test);
 load();
