@@ -8,7 +8,7 @@ Chrome new tab extension that turns every new tab into a focused dashboard: top 
 
 Every time you open a new tab, you see:
 
-1. **A short greeting** — "Добрый день, Илья"
+1. **A short greeting** — "Good afternoon" / "Добрый день"
 2. **A strategic focus line** — one sentence from Claude: what's most important right now and why, based on ALL your context (tasks, notes, people, projects)
 3. **"Подробнее"** — expands into 3-5 specific advice points + warnings about risks/overdue items
 4. **Top 3 tasks** — AI-prioritized, with short "verb + essence" titles (max 6 words), deadline badges, area/topic tags
@@ -40,7 +40,7 @@ Write an update like "сдвинем на неделю" → Claude interprets it
          (thoughts + pgvector)  (claude-sonnet-4)
 ```
 
-All backend lives in a separate repo: [izomba-lang/open-brain](https://github.com/izomba-lang/open-brain).
+The backend (Supabase Edge Functions + pgvector storage) is maintained in a separate private repo. The extension is designed to work with any deployment that exposes the four endpoints described below — fork and point it at your own Supabase project.
 
 ### Edge Functions used
 
