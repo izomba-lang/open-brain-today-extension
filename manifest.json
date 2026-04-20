@@ -4,7 +4,6 @@
   "short_name": "Open Brain",
   "version": "1.0.0",
   "description": "Новая вкладка Chrome: 3 задачи на сегодня из Open Brain + дневной бриф от Claude.",
-  "default_locale": "ru",
   "chrome_url_overrides": {
     "newtab": "newtab.html"
   },
