@@ -388,6 +388,39 @@ function renderTaskView(taskId) {
   const contentEl = document.getElementById("btv-content");
   if (contentEl) contentEl.textContent = task.content || "";
 
+  // Sidebar: replace demo cards with real data (or hide)
+  const sideEl = document.querySelector(".b-tv-side");
+  if (sideEl) {
+    const merged = task.merged_ids || [];
+    const people = task.people || [];
+    const dl = formatDeadline(task.due_date);
+
+    const rows = [];
+    rows.push(`<div class="stat-row"><span>Зона</span><span class="v">${escapeHtml(z.title)}</span></div>`);
+    if (idx >= 0 && idx < TOP_N) {
+      rows.push(`<div class="stat-row"><span>Приоритет</span><span class="v" style="color: var(--accent-blue);">#${idx + 1}${idx === 0 ? " · primary" : ""}</span></div>`);
+    }
+    if (task.topic) {
+      rows.push(`<div class="stat-row"><span>Тема</span><span class="v">${escapeHtml(task.topic)}</span></div>`);
+    }
+    if (dl) {
+      rows.push(`<div class="stat-row"><span>Дедлайн</span><span class="v">${escapeHtml(dl.label)}</span></div>`);
+    }
+    if (people.length) {
+      rows.push(`<div class="stat-row"><span>Люди</span><span class="v">${escapeHtml(people.join(", "))}</span></div>`);
+    }
+    if (merged.length) {
+      rows.push(`<div class="stat-row"><span>Объединено</span><span class="v">+${merged.length} задач${merged.length > 4 ? "" : "и"}</span></div>`);
+    }
+
+    sideEl.innerHTML = `
+      <div class="side-card">
+        <h5>Детали</h5>
+        ${rows.join("\n")}
+      </div>
+    `;
+  }
+
   const crumb = document.getElementById("b-crumb-label");
   if (crumb) crumb.textContent = task.title;
 }
