@@ -274,10 +274,85 @@ function renderHomeMain() {
           ${areaPill}${topicPill}${dlPill}
         </div>
       </div>
-      <span class="b-task-open">OPEN →</span>
+      <div class="b-task-actions">
+        <button class="b-task-done" title="Выполнено" data-task-done="${task.id}">✓</button>
+        <button class="b-task-update" title="Апдейт" data-task-update="${task.id}">…</button>
+      </div>
     `;
-    card.addEventListener("click", () => openTask(task.id));
+    card.addEventListener("click", (e) => {
+      if (e.target.closest("[data-task-done], [data-task-update], .b-task-quick-input, .b-task-quick")) return;
+      openTask(task.id);
+    });
     main.appendChild(card);
+
+    // Wire done button
+    const doneBtn = card.querySelector("[data-task-done]");
+    if (doneBtn) doneBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      doneBtn.disabled = true;
+      doneBtn.textContent = "…";
+      try {
+        await markDone(task.id);
+        state.tasks = state.tasks.filter((t) => t.id !== task.id);
+        renderAll();
+      } catch (err) {
+        doneBtn.textContent = "!";
+        setTimeout(() => { doneBtn.disabled = false; doneBtn.textContent = "✓"; }, 1500);
+      }
+    });
+
+    // Wire quick update button — toggles inline input
+    const updateBtn = card.querySelector("[data-task-update]");
+    if (updateBtn) updateBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      let quickRow = card.querySelector(".b-task-quick");
+      if (quickRow) {
+        quickRow.remove();
+        return;
+      }
+      quickRow = document.createElement("div");
+      quickRow.className = "b-task-quick";
+      quickRow.innerHTML = `
+        <input type="text" class="b-task-quick-input" placeholder="Сдвинем на неделю / готово / заметка..." />
+        <button class="b-task-quick-send">↑</button>
+      `;
+      card.appendChild(quickRow);
+      const input = quickRow.querySelector("input");
+      const send = quickRow.querySelector("button");
+      input.focus();
+
+      const submit = async () => {
+        const text = input.value.trim();
+        if (!text) return;
+        send.disabled = true;
+        input.disabled = true;
+        send.textContent = "…";
+        try {
+          const result = await processUpdate(task.id, text);
+          const action = result.action || {};
+          if (action.mark_done) {
+            state.tasks = state.tasks.filter((t) => t.id !== task.id);
+          } else {
+            try {
+              const data = await fetchFocus();
+              state.tasks = data.tasks || [];
+              await setCached(CACHE_KEY, data);
+            } catch {}
+          }
+          renderAll();
+        } catch (err) {
+          send.textContent = "!";
+          setTimeout(() => { send.disabled = false; input.disabled = false; send.textContent = "↑"; }, 1500);
+        }
+      };
+      send.addEventListener("click", (ev) => { ev.stopPropagation(); submit(); });
+      input.addEventListener("keydown", (ev) => {
+        ev.stopPropagation();
+        if (ev.key === "Enter") { ev.preventDefault(); submit(); }
+        if (ev.key === "Escape") { ev.preventDefault(); quickRow.remove(); }
+      });
+      input.addEventListener("click", (ev) => ev.stopPropagation());
+    });
   });
 }
 
