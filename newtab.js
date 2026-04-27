@@ -597,9 +597,57 @@ async function loadData(opts = { force: false }) {
   }
 }
 
+function renderExploreCard() {
+  const titleEl = document.getElementById("b-explore-title");
+  const quadEl = document.getElementById("b-explore-quadrants");
+  if (!quadEl) return;
+
+  if (titleEl) {
+    const total = state.tasks.length;
+    titleEl.textContent = `Explore · ${total} ${total === 1 ? "задача" : total < 5 ? "задачи" : "задач"}`;
+  }
+
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  quadEl.innerHTML = ZONES.map((z) => {
+    const zTasks = state.tasks.filter((t) => zoneOf(t).key === z.key);
+    const overdue = zTasks.filter((t) => {
+      if (!t.due_date) return false;
+      return new Date(t.due_date).getTime() < now.getTime();
+    }).length;
+    const nextDl = zTasks
+      .filter((t) => t.due_date && new Date(t.due_date).getTime() >= now.getTime())
+      .map((t) => formatDeadline(t.due_date))
+      .filter(Boolean)
+      .sort((a, b) => a.diff - b.diff)[0];
+    const dlText = overdue ? `${overdue}↯` : (nextDl ? nextDl.label : "—");
+    const dlCls = overdue ? "overdue" : (nextDl?.cls || "");
+    return `
+      <div class="b-quad" data-zone-key="${z.key}">
+        <div class="top"><div class="n">${zTasks.length}</div><div class="dl ${dlCls}">${escapeHtml(dlText)}</div></div>
+        <div class="lbl">${escapeHtml(z.title)}</div>
+      </div>
+    `;
+  }).join("");
+
+  // Wire individual quadrant clicks → drill into zone
+  quadEl.querySelectorAll(".b-quad").forEach((q) => {
+    q.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const zoneKey = q.dataset.zoneKey;
+      if (!zoneKey) return;
+      state.activeZone = zoneKey;
+      document.body.dataset.from = "home";
+      document.body.dataset.screen = "zone";
+      renderZoneView(zoneKey);
+      window.scrollTo({ top: 0, behavior: "instant" });
+    });
+  });
+}
+
 function renderAll() {
   renderLeftBrief();
   renderHomeMain();
+  renderExploreCard();
   if (document.body.dataset.screen === "all") renderAllView();
   if (document.body.dataset.screen === "task" && state.activeTaskId != null) renderTaskView(state.activeTaskId);
   if (document.body.dataset.screen === "zone" && state.activeZone) renderZoneView(state.activeZone);
@@ -623,6 +671,16 @@ async function init() {
   // Wire count btn (Explore-all)
   const countBtn = document.getElementById("b-count-btn");
   if (countBtn) countBtn.addEventListener("click", openAll);
+
+  // Wire Explore card (right sidebar) — clicking title/empty area opens all-tasks
+  const exploreCard = document.getElementById("b-explore-card");
+  if (exploreCard) {
+    exploreCard.addEventListener("click", (e) => {
+      // Ignore clicks that bubbled from a specific quadrant (it has its own handler)
+      if (e.target.closest(".b-quad")) return;
+      openAll();
+    });
+  }
 
   // Crumb back
   document.querySelectorAll('[data-goto="home"]').forEach((b) => b.addEventListener("click", goBack));
