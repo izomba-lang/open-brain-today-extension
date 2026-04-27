@@ -388,8 +388,8 @@ function renderTaskView(taskId) {
   const contentEl = document.getElementById("btv-content");
   if (contentEl) contentEl.textContent = task.content || "";
 
-  // Sidebar: replace demo cards with real data (or hide)
-  const sideEl = document.querySelector(".b-tv-side");
+  // Sidebar: populate with real data
+  const sideEl = document.getElementById("btv-side") || document.querySelector(".b-tv-side");
   if (sideEl) {
     const merged = task.merged_ids || [];
     const people = task.people || [];
@@ -674,6 +674,83 @@ async function init() {
       setTimeout(() => { startBtn.disabled = false; startBtn.textContent = "Начать →"; }, 1500);
     }
   });
+
+  // Task update input (free-form Claude-interpreted update)
+  const updateBtn = document.getElementById("btv-update-btn");
+  const updateInput = document.getElementById("btv-update-input");
+  const submitUpdate = async () => {
+    if (state.activeTaskId == null) return;
+    const text = updateInput.value.trim();
+    if (!text) return;
+    updateBtn.disabled = true;
+    updateInput.disabled = true;
+    const orig = updateBtn.textContent;
+    updateBtn.textContent = "…";
+    try {
+      const result = await processUpdate(state.activeTaskId, text);
+      const action = result.action || {};
+      if (action.mark_done) {
+        state.tasks = state.tasks.filter((t) => t.id !== state.activeTaskId);
+        state.activeTaskId = null;
+        renderAll();
+        goBack();
+      } else {
+        // Refetch fresh AI titles
+        try {
+          const data = await fetchFocus();
+          state.tasks = data.tasks || [];
+          await setCached(CACHE_KEY, data);
+        } catch {}
+        updateInput.value = "";
+        renderAll();
+        if (state.activeTaskId != null) renderTaskView(state.activeTaskId);
+      }
+      updateBtn.textContent = "✓";
+    } catch (err) {
+      updateBtn.textContent = "!";
+    } finally {
+      updateInput.disabled = false;
+      setTimeout(() => { updateBtn.disabled = false; updateBtn.textContent = orig; }, 1200);
+    }
+  };
+  if (updateBtn) updateBtn.addEventListener("click", submitUpdate);
+  if (updateInput) updateInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); submitUpdate(); }
+  });
+
+  // Capture form (quick task add)
+  const captureForm = document.getElementById("b-capture-form");
+  if (captureForm) {
+    captureForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const input = document.getElementById("b-capture-input");
+      const text = input.value.trim();
+      if (!text) return;
+
+      const btn = captureForm.querySelector("button[type='submit']");
+      input.disabled = true;
+      if (btn) { btn.disabled = true; btn.textContent = "…"; }
+
+      try {
+        await mcpCall("capture_thought", { content: text, type: "task" });
+        input.value = "";
+        await storageRemove(CACHE_KEY);
+        const data = await fetchFocus();
+        state.tasks = data.tasks || [];
+        await setCached(CACHE_KEY, data);
+        renderAll();
+      } catch (err) {
+        if (btn) btn.textContent = "!";
+      } finally {
+        input.disabled = false;
+        if (btn) {
+          btn.disabled = false;
+          setTimeout(() => { btn.textContent = "↑"; }, 800);
+        }
+        input.focus();
+      }
+    });
+  }
 
   // Show config state or load data
   const cfg = await getConfig();

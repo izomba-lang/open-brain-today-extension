@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Open Brain — Today",
   "short_name": "Open Brain",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Новая вкладка Chrome: 3 задачи на сегодня из Open Brain + дневной бриф от Claude.",
   "chrome_url_overrides": {
     "newtab": "newtab.html"

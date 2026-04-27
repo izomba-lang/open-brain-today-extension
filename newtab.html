@@ -2133,60 +2133,14 @@ body.ob-busy .settings-fab { visibility: hidden; }
           <div class="b-tv-section">
             <h4>Апдейт</h4>
             <div class="b-tv-update-row">
-              <input type="text" placeholder="Напиши что-то — «сдвинем на неделю», «готово», или просто заметку..." />
-              <button>Отправить ↑</button>
+              <input type="text" id="btv-update-input" placeholder="Напиши что-то — «сдвинем на неделю», «готово», или просто заметку..." />
+              <button id="btv-update-btn">Отправить ↑</button>
             </div>
             <p class="b-tv-hint">Claude сам разберёт: сдвинет дедлайн, добавит заметку или закроет задачу.</p>
           </div>
-
-          <div class="b-tv-section">
-            <h4>История</h4>
-            <ul class="b-tv-history">
-              <li class="claude">
-                <div class="when">09:42 · СЕГОДНЯ</div>
-                <div class="who">Claude · priority rerank</div>
-                <p>Поднял приоритет до #1 — дедлайн ужался до 6 часов, созвон в 16:00 подтверждён в календаре.</p>
-              </li>
-              <li class="user">
-                <div class="when">ВЧЕРА · 22:14</div>
-                <div class="who">Ты</div>
-                <p>«Катя советует retainer на случай scope creep — добавить в v3»</p>
-              </li>
-              <li>
-                <div class="when">ВЧЕРА · 17:08</div>
-                <div class="who">Создана</div>
-                <p>Из письма Алёны «жду оффер до пятницы».</p>
-              </li>
-            </ul>
-          </div>
         </div>
 
-        <aside class="b-tv-side">
-          <div class="side-card">
-            <h5>Связано</h5>
-            <div class="related-item" data-zone="open-brain">
-              <div class="related-title">Закрыть контракт с командой Open Brain</div>
-              <div class="related-meta"><span class="pill dl">ДО ПТ</span></div>
-            </div>
-            <div class="related-item" data-zone="open-brain">
-              <div class="related-title">MCP: update_thought endpoint</div>
-              <div class="related-meta"><span class="pill dl">+4Д</span></div>
-            </div>
-            <div class="related-item" data-zone="open-brain">
-              <div class="related-title">Созвон с Алёной (календарь)</div>
-              <div class="related-meta"><span class="pill dl urgent">СЕГОДНЯ · 16:00</span></div>
-            </div>
-          </div>
-
-          <div class="side-card">
-            <h5>Детали</h5>
-            <div class="stat-row"><span>Создана</span><span class="v">ВЧЕРА 17:08</span></div>
-            <div class="stat-row"><span>Зона</span><span class="v">Open Brain</span></div>
-            <div class="stat-row"><span>Приоритет</span><span class="v" style="color: var(--accent-blue);">#1 · primary</span></div>
-            <div class="stat-row"><span>Уверенность</span><span class="v">92%</span></div>
-            <div class="stat-row"><span>Оценка</span><span class="v">~40 мин</span></div>
-          </div>
-        </aside>
+        <aside class="b-tv-side" id="btv-side"></aside>
       </div>
     </section>
 
@@ -2211,8 +2165,8 @@ body.ob-busy .settings-fab { visibility: hidden; }
     <aside class="b-aside-right">
       <div class="b-card b-capture">
         <h4>+ Захват</h4>
-        <form onsubmit="return false">
-          <input type="text" placeholder="Новая задача...">
+        <form id="b-capture-form">
+          <input type="text" id="b-capture-input" placeholder="Новая задача...">
           <button type="submit" title="Сохранить">↑</button>
         </form>
       </div>
